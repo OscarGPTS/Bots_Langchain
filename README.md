@@ -18,6 +18,7 @@ Proyecto de bots inteligentes usando LangChain para consultas de Recursos Humano
 
 - **🤖 Bot General**: Consulta inteligente de RH y documentos Paperless con IA
 - **👥 Bot de RH**: Especializado en consultas de Recursos Humanos
+- **📄 Bot de Documentos**: Búsqueda inteligente y análisis de documentos con OCR
 - **🧠 IA Local**: Usa Ollama (phi4-mini:latest) - sin costos de API
 - **📄 Integración Paperless**: Búsqueda de documentos con OCR
 - **🔍 Búsqueda Inteligente**: Respuestas naturales usando LangChain
@@ -31,7 +32,8 @@ Proyecto de bots inteligentes usando LangChain para consultas de Recursos Humano
 langchain/
 ├── bots/                      # Bots principales
 │   ├── bot_general.py        # Bot que consulta RH + Paperless
-│   └── bot_rh.py             # Bot especializado en RH
+│   ├── bot_rh.py             # Bot especializado en RH
+│   └── bot_documentos.py     # Bot de búsqueda en documentos
 ├── scripts/                   # Scripts de utilidad
 │   ├── crear_db_ejemplo.py   # Crear base de datos de prueba
 │   ├── generar_token_paperless.py
@@ -163,7 +165,34 @@ python bots/bot_rh.py
 🧑 Pregunta: Busca a Juan Rodríguez
 🧑 Pregunta: ¿Cuántos empleados hay en IT?
 🧑 Pregunta: Lista del departamento de Soldadura
-🧑 Pregunta: Estadísticas por área
+🧑 
+
+---
+
+### Bot de Documentos
+
+Búsqueda inteligente en documentos con análisis de contenido:
+
+```powershell
+python bots/bot_documentos.py
+```
+
+**Ejemplos de consultas:**
+
+```
+📝 Consulta: Busca documentos sobre contratos
+📝 Consulta: ¿Qué dice la política de vacaciones?
+📝 Consulta: Resume el documento sobre seguridad
+📝 Consulta: Lista documentos recientes
+📝 Consulta: Analiza documento 123
+```
+
+**Capacidades:**
+- 🔍 Búsqueda por texto completo (OCR)
+- 📖 Extracción de información específica
+- 📝 Resumen automático de documentos
+- 💬 Responde preguntas sobre el contenido
+- 🔗 Análisis de documentos por IDPregunta: Estadísticas por área
 ```
 
 ---
