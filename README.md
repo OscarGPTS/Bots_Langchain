@@ -16,12 +16,25 @@ Proyecto de bots inteligentes usando LangChain para consultas de Recursos Humano
 
 ## ✨ Características
 
+### Bots Disponibles
+
 - **🤖 Bot General**: Consulta inteligente de RH y documentos Paperless con IA
 - **👥 Bot de RH**: Especializado en consultas de Recursos Humanos
 - **📄 Bot de Documentos**: Búsqueda inteligente y análisis de documentos con OCR
-- **🧠 IA Local**: Usa Ollama (phi4-mini:latest) - sin costos de API
-- **📄 Integración Paperless**: Búsqueda de documentos con OCR
-- **🔍 Búsqueda Inteligente**: Respuestas naturales usando LangChain
+- **🚀 Bot Avanzado (NUEVO)**: Sistema de vectorización con ChromaDB
+  - 🗄️ ChromaDB: Base de datos vectorial persistente
+  - ☁️ Dual: OpenAI (cloud) o Ollama (local)
+  - ⚡ Modo Consulta Rápida: Respuestas directas
+  - 🧠 Modo Razonamiento: Análisis complejos
+  - 💰 Monitor de costos: Tracking de tokens y gastos
+
+### Tecnologías
+
+- **🧠 IA Local**: Ollama (phi4-mini:latest) - sin costos de API
+- **☁️ IA Cloud**: OpenAI (GPT-4o-mini, GPT-4o) - opcional
+- **🗄️ Vectorización**: ChromaDB con persistencia local
+- **📄 OCR**: Integración con Paperless-ngx
+- **🔍 Búsqueda Inteligente**: LangChain con embeddings semánticos
 - **⚙️ Configuración Simple**: Todo en un archivo `.env`
 
 ---
@@ -33,16 +46,19 @@ langchain/
 ├── bots/                      # Bots principales
 │   ├── bot_general.py        # Bot que consulta RH + Paperless
 │   ├── bot_rh.py             # Bot especializado en RH
-│   └── bot_documentos.py     # Bot de búsqueda en documentos
+│   ├── bot_documentos.py     # Bot de búsqueda en documentos
+│   └── bot_documentos_avanzado.py  # 🚀 Bot con ChromaDB y OpenAI
 ├── scripts/                   # Scripts de utilidad
 │   ├── crear_db_ejemplo.py   # Crear base de datos de prueba
 │   ├── generar_token_paperless.py
 │   ├── probar_api_rh.py      # Verificar conexión con API RH
-│   └── probar_paperless.py   # Verificar Paperless
+│   ├── probar_paperless.py   # Verificar Paperless
+│   └── probar_bot_avanzado.py  # 🧪 Pruebas del bot avanzado
 ├── utils/                     # Herramientas
 │   └── verificar_ollama.py   # Ver modelos disponibles
 ├── data/                      # Datos locales
 │   └── empresa.db            # Base de datos SQLite (opcional)
+├── chroma_db/                 # 🗄️ Base de datos vectorial (ChromaDB)
 ├── .env                       # Configuración (TU ARCHIVO)
 ├── .env.example              # Plantilla de configuración
 ├── .gitignore                # Archivos ignorados por Git

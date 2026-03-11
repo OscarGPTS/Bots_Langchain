@@ -5,6 +5,10 @@ langchain-community>=0.0.20
 langchain-core>=0.3.0
 langchain-ollama>=1.0.1
 
+# Base de datos vectorial
+chromadb>=0.4.22
+tiktoken>=0.5.2
+
 # Base de datos
 sqlalchemy>=2.0.0
 

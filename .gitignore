@@ -22,6 +22,9 @@ build/
 *.sqlite3
 data/
 
+# ChromaDB - Base de datos vectorial
+chroma_db/
+
 # IDEs
 .vscode/
 .idea/
