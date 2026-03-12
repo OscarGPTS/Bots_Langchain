@@ -7,6 +7,7 @@ langchain-ollama>=1.0.1
 
 # Base de datos vectorial
 chromadb>=0.4.22
+langchain-chroma>=0.1.0
 tiktoken>=0.5.2
 
 # Base de datos

@@ -1,10 +1,13 @@
-"""Bot de Documentos - Búsqueda inteligente en Paperless con IA"""
+"""Bot de Documentos - Búsqueda inteligente en Paperless con IA y ChromaDB"""
 import os
 import requests
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dotenv import load_dotenv
-from langchain_ollama import ChatOllama
+from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_core.messages import HumanMessage
+from langchain_core.documents import Document
+from langchain_chroma import Chroma
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Cargar variables de entorno
 load_dotenv()
@@ -13,15 +16,23 @@ PAPERLESS_URL = os.getenv('PAPERLESS_URL')
 PAPERLESS_TOKEN = os.getenv('PAPERLESS_TOKEN')
 OLLAMA_URL = os.getenv('OLLAMA_URL')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'phi4-mini:latest')
+CHROMA_DB_PATH = os.getenv('CHROMA_DB_PATH', './chroma_db')
 
 
 class BotDocumentos:
-    """Bot especializado en búsqueda de documentos con IA"""
+    """Bot especializado en búsqueda de documentos con IA y ChromaDB"""
     
     def __init__(self):
         self.llm = None
+        self.embeddings = None
+        self.vector_store = None
+        self.text_splitter = None
+        self.documentos_indexados = set()
+        
         self._inicializar_ia()
+        self._inicializar_chromadb()
         self._verificar_paperless()
+        self._cargar_documentos()
     
     def _inicializar_ia(self):
         """Inicializar modelo de IA"""
@@ -55,9 +66,163 @@ class BotDocumentos:
             response.raise_for_status()
             data = response.json()
             total = data.get('count', 0)
-            print(f"✅ Paperless conectado: {total} documentos disponibles\n")
+            print(f"✅ Paperless conectado: {total} documentos disponibles")
         except Exception as e:
-            print(f"⚠️ Error al conectar con Paperless: {e}\n")
+            print(f"⚠️ Error al conectar con Paperless: {e}")
+    
+    def _inicializar_chromadb(self):
+        """Inicializar ChromaDB para búsqueda vectorial"""
+        try:
+            print("🗄️  Inicializando ChromaDB...")
+            
+            # Crear directorio si no existe
+            os.makedirs(CHROMA_DB_PATH, exist_ok=True)
+            
+            # Inicializar embeddings de Ollama
+            self.embeddings = OllamaEmbeddings(
+                base_url=OLLAMA_URL,
+                model=OLLAMA_MODEL
+            )
+            
+            # Inicializar ChromaDB con colección específica para este bot
+            self.vector_store = Chroma(
+                collection_name="docs_simple",
+                embedding_function=self.embeddings,
+                persist_directory=CHROMA_DB_PATH
+            )
+            
+            # Inicializar text splitter (chunks más pequeños para respuestas rápidas)
+            self.text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=800,
+                chunk_overlap=100,
+                length_function=len,
+                separators=["\n\n", "\n", ". ", " ", ""]
+            )
+            
+            # Contar documentos existentes
+            collection = self.vector_store._collection
+            count = collection.count()
+            
+            print(f"✅ ChromaDB listo (Colección: docs_simple, {count} vectores)")
+        
+        except Exception as e:
+            print(f"⚠️ ChromaDB no disponible: {e}")
+            self.vector_store = None
+            import traceback
+            traceback.print_exc()
+    
+    def _cargar_documentos(self):
+        """Cargar y vectorizar documentos desde Paperless si no están indexados"""
+        if self.vector_store is None:
+            print("⚠️ No se puede cargar documentos: vector_store no inicializado")
+            return
+        
+        if not PAPERLESS_URL or not PAPERLESS_TOKEN:
+            print("⚠️ No se puede cargar documentos: Paperless no configurado")
+            return
+        
+        try:
+            # Verificar si la colección está vacía
+            collection = self.vector_store._collection
+            count = collection.count()
+            
+            if count == 0:
+                print("📥 Colección vacía, indexando todos los documentos...")
+            else:
+                print("📥 Verificando documentos nuevos en Paperless...")
+            
+            headers = {'Authorization': f'Token {PAPERLESS_TOKEN}'}
+            response = requests.get(
+                f"{PAPERLESS_URL}/api/documents/",
+                headers=headers,
+                params={'page_size': 100},
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            documentos = response.json().get('results', [])
+            print(f"📋 Encontrados {len(documentos)} documentos en Paperless")
+            
+            documentos_nuevos = 0
+            
+            for doc in documentos:
+                doc_id = str(doc.get('id'))
+                
+                # Si la colección no está vacía, verificar si ya está indexado
+                if count > 0:
+                    try:
+                        results = self.vector_store.get(where={"doc_id": doc_id})
+                        if results and results.get('ids'):
+                            self.documentos_indexados.add(doc_id)
+                            continue
+                    except:
+                        pass
+                
+                # Indexar documento nuevo o todos si la colección estaba vacía
+                print(f"🔄 Intentando indexar documento {doc_id}: {doc.get('title')}")
+                if self._indexar_documento(doc, headers):
+                    documentos_nuevos += 1
+                    self.documentos_indexados.add(doc_id)
+            
+            if documentos_nuevos > 0:
+                print(f"✅ Indexados {documentos_nuevos} documentos nuevos\n")
+            else:
+                print("✅ Todos los documentos ya están indexados\n")
+        
+        except Exception as e:
+            print(f"⚠️ Error al cargar documentos: {e}\n")
+            import traceback
+            traceback.print_exc()
+    
+    def _indexar_documento(self, doc: Dict, headers: Dict) -> bool:
+        """Indexar un documento en ChromaDB"""
+        try:
+            doc_id = doc.get('id')
+            title = doc.get('title', 'Sin título')
+            
+            # Obtener contenido OCR
+            response = requests.get(
+                f"{PAPERLESS_URL}/api/documents/{doc_id}/",
+                headers=headers,
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            content = response.json().get('content', '')
+            if not content:
+                return False
+            
+            # Dividir en chunks
+            chunks = self.text_splitter.split_text(content)
+            
+            # Crear documentos con metadata
+            documents = []
+            for i, chunk in enumerate(chunks):
+                metadata = {
+                    "doc_id": str(doc_id),
+                    "title": title,
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                    "created": doc.get('created', ''),
+                    "tags": ','.join(str(t) for t in doc.get('tags', [])),
+                }
+                
+                documents.append(
+                    Document(
+                        page_content=chunk,
+                        metadata=metadata
+                    )
+                )
+            
+            # Agregar a ChromaDB
+            self.vector_store.add_documents(documents)
+            
+            print(f"   ✅ Indexado: {title} ({len(chunks)} chunks)")
+            return True
+        
+        except Exception as e:
+            print(f"   ⚠️ Error indexando documento {doc_id}: {e}")
+            return False
     
     def buscar_documentos(self, query: str, max_resultados: int = 10) -> List[Dict]:
         """Buscar documentos en Paperless con fallback inteligente"""
@@ -218,8 +383,62 @@ class BotDocumentos:
             return self._respuesta_simple(documentos)
     
     def _analizar_con_ia(self, pregunta: str, documentos: List[Dict]) -> str:
-        """Analizar documentos con IA"""
+        """Analizar documentos con IA usando búsqueda semántica"""
         try:
+            # Si ChromaDB está disponible, usar búsqueda semántica
+            if self.vector_store:
+                print("🔍 Buscando fragmentos relevantes con ChromaDB...")
+                
+                # Búsqueda semántica (solo los 5 chunks más relevantes)
+                relevant_chunks = self.vector_store.similarity_search(
+                    pregunta,
+                    k=5
+                )
+                
+                if relevant_chunks:
+                    # Construir contexto con chunks relevantes (mucho más eficiente)
+                    contexto = f"Pregunta: {pregunta}\n\n"
+                    contexto += "Fragmentos relevantes de documentos:\n\n"
+                    
+                    docs_mencionados = set()
+                    for i, chunk in enumerate(relevant_chunks, 1):
+                        title = chunk.metadata.get('title')
+                        docs_mencionados.add(title)
+                        contexto += f"[{title}]\n{chunk.page_content}\n\n"
+                    
+                    # Prompt optimizado
+                    prompt = f"""{contexto}
+
+Responde la pregunta basándote ÚNICAMENTE en los fragmentos anteriores.
+Si la información no está en los fragmentos, indícalo claramente.
+Sé directo y conciso.
+
+Respuesta:"""
+                    
+                    response = self.llm.invoke([HumanMessage(content=prompt)])
+                    respuesta_ia = response.content.strip()
+                    
+                    # Agregar documentos consultados
+                    resultado = f"🤖 {respuesta_ia}\n\n"
+                    resultado += "─" * 60 + "\n"
+                    resultado += "📚 Documentos consultados:\n\n"
+                    
+                    for doc_title in docs_mencionados:
+                        # Buscar el documento original para obtener fecha e ID
+                        doc_original = next(
+                            (d for d in documentos if d.get('title') == doc_title),
+                            None
+                        )
+                        if doc_original:
+                            resultado += f"📄 {doc_title}\n"
+                            resultado += f"   📅 {doc_original.get('created')}\n"
+                            resultado += f"   🔗 ID: {doc_original.get('id')}\n\n"
+                    
+                    return resultado
+            
+            # Fallback: método original (descarga contenido completo)
+            print("📖 Usando método tradicional...")
+            
             # Preparar contexto con contenido de documentos
             contexto = f"Pregunta del usuario: {pregunta}\n\n"
             contexto += f"Documentos encontrados ({len(documentos)}):\n\n"
