@@ -42,9 +42,17 @@ python scripts/iniciar_api.py
 ```
 
 **Acceder a:**
+
+**Desarrollo (local):**
 - 🌐 **Swagger UI**: http://localhost:8000/docs
 - 📖 **ReDoc**: http://localhost:8000/redoc
 - ❤️ **Health Check**: http://localhost:8000/health
+
+**Producción:**
+- 🌐 **Swagger UI**: https://bots.tech-energy.lat/docs
+- 📖 **ReDoc**: https://bots.tech-energy.lat/redoc
+- ❤️ **Health Check**: https://bots.tech-energy.lat/health
+- 🔒 **Autenticación**: Gestionada por Cloudflare Zero Trust
 
 ---
 
@@ -65,7 +73,7 @@ python scripts/iniciar_api.py
 - 🗄️ ChromaDB local + Ollama (phi4-mini:latest)
 - ⚡ Búsqueda vectorial sin costos de API
 - 📄 87 vectores indexados
-- 🔍 4 endpoints: query, analyze-document, recent-documents, health
+- 🔍 5 endpoints: query, analyze-document, documents, recent-documents, health
 
 **Bot Avanzado** (`/api/v1/bot-avanzado`)
 - ☁️ ChromaDB + OpenAI (gpt-5-nano)
@@ -74,7 +82,7 @@ python scripts/iniciar_api.py
 - 🔎 Búsqueda semántica pura (sin LLM)
 - 📊 116 vectores, estadísticas, reindexación
 - 💰 Monitor de costos y tokens
-- 📈 6 endpoints completos
+- 📈 8 endpoints completos
 
 ### 🛠️ Stack Tecnológico
 - **API**: FastAPI + Uvicorn + Gunicorn (producción)
@@ -84,7 +92,8 @@ python scripts/iniciar_api.py
 - **Validación**: Pydantic 2.12.5
 - **Documentos**: Paperless-ngx con OCR
 - **Búsqueda**: LangChain con embeddings semánticos
-- **Proxy**: Nginx + SSL/HTTPS (producción)
+- **Proxy**: Nginx + Cloudflare Zero Trust (producción)
+- **Dominio**: https://bots.tech-energy.lat
 
 ---
 
@@ -172,8 +181,8 @@ langchain/
 │   ├── models/
 │   │   └── schemas.py          #    Modelos Pydantic
 │   └── routes/
-│       ├── bot_simple.py       #    4 endpoints bot simple
-│       └── bot_avanzado.py     #    6 endpoints bot avanzado
+│       ├── bot_simple.py       #    5 endpoints bot simple
+│       └── bot_avanzado.py     #    8 endpoints bot avanzado
 ├── bot_documentos.py           # 🤖 Bot Simple (Ollama)
 ├── bot_documentos_avanzado.py  # 🚀 Bot Avanzado (OpenAI)
 ├── scripts/
@@ -199,12 +208,13 @@ langchain/
 
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
-| POST | `/query` | Consulta general |
-| POST | `/analyze-document` | Analizar documento por ID |
-| GET | `/recent-documents` | Documentos recientes de Paperless |
+| POST | `/query` | Consulta general con IA |
+| POST | `/analyze-document` | Analizar documento específico por ID |
+| GET | `/documents` | Listar todos los documentos (JSON) |
+| GET | `/recent-documents` | Documentos recientes (JSON) |
 | GET | `/health` | Health check del bot |
 
-**Ejemplo Request:**
+**Ejemplo Request (POST /query):**
 ```json
 {
   "pregunta": "¿Qué dice el código de ética sobre integridad?"
@@ -219,6 +229,26 @@ langchain/
 }
 ```
 
+**Ejemplo Response (GET /documents):**
+```json
+{
+  "documentos": [
+    {
+      "id": 3,
+      "title": "Reglamento Interno de Trabajo",
+      "created": "2026-03-11",
+      "modified": "2026-03-11T16:21:45.158706Z",
+      "tags": [],
+      "document_type": null,
+      "correspondent": null,
+      "archive_serial_number": null
+    }
+  ],
+  "total": 4,
+  "tiempo_respuesta": 0.89
+}
+```
+
 ### **Bot Avanzado** - `/api/v1/bot-avanzado`
 
 | Método | Endpoint | Descripción |
@@ -226,6 +256,8 @@ langchain/
 | POST | `/consulta-rapida` | Respuesta rápida (3 chunks) |
 | POST | `/razonamiento-profundo` | Análisis profundo (10-20 chunks) |
 | POST | `/busqueda-semantica` | Búsqueda vectorial sin LLM |
+| GET | `/documents` | Listar todos los documentos (JSON) |
+| GET | `/recent-documents` | Documentos recientes (JSON) |
 | GET | `/stats` | Estadísticas (docs, vectores, costos) |
 | POST | `/reindexar` | Forzar reindexación |
 | GET | `/health` | Health check del bot |
@@ -349,6 +381,12 @@ $body = @{pregunta="¿Cuál es el horario de trabajo?"} | ConvertTo-Json
 Invoke-WebRequest -Uri "http://localhost:8000/api/v1/bot-simple/query" `
   -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
 
+# Listar todos los documentos (JSON estructurado)
+Invoke-WebRequest "http://localhost:8000/api/v1/bot-simple/documents?limite=10" -UseBasicParsing
+
+# Documentos recientes (JSON)
+Invoke-WebRequest "http://localhost:8000/api/v1/bot-simple/recent-documents?limite=5" -UseBasicParsing
+
 # Búsqueda semántica
 $body = @{query="seguridad e higiene"; k=5} | ConvertTo-Json
 Invoke-WebRequest -Uri "http://localhost:8000/api/v1/bot-avanzado/busqueda-semantica" `
@@ -365,6 +403,14 @@ Invoke-WebRequest -Uri "http://localhost:8000/api/v1/bot-avanzado/stats" -UseBas
 curl -X POST "http://localhost:8000/api/v1/bot-simple/query" \
   -H "Content-Type: application/json" \
   -d '{"pregunta": "¿Qué dice el código de ética?"}'
+
+# Listar documentos
+curl "http://localhost:8000/api/v1/bot-simple/documents?limite=10"
+
+# Analizar documento específico por ID
+curl -X POST "http://localhost:8000/api/v1/bot-simple/analyze-document" \
+  -H "Content-Type: application/json" \
+  -d '{"documento_id": 3, "pregunta": "Resume este documento"}'
 
 # Razonamiento profundo
 curl -X POST "http://localhost:8000/api/v1/bot-avanzado/razonamiento-profundo" \
@@ -385,6 +431,13 @@ curl "http://localhost:8000/api/v1/bot-avanzado/stats"
 ```python
 import requests
 
+# Listar todos los documentos disponibles
+response = requests.get("http://localhost:8000/api/v1/bot-simple/documents?limite=20")
+docs = response.json()
+print(f"Total documentos: {docs['total']}")
+for doc in docs['documentos']:
+    print(f"  [{doc['id']}] {doc['title']} - {doc['created']}")
+
 # Consulta al bot simple
 response = requests.post(
     "http://localhost:8000/api/v1/bot-simple/query",
@@ -393,6 +446,13 @@ response = requests.post(
 data = response.json()
 print(data["respuesta"])
 print(f"Tiempo: {data['tiempo_respuesta']}s")
+
+# Analizar documento específico (usa ID de la lista anterior)
+response = requests.post(
+    "http://localhost:8000/api/v1/bot-simple/analyze-document",
+    json={"documento_id": 3, "pregunta": "Resume este documento"}
+)
+print(response.json()["respuesta"])
 
 # Razonamiento profundo con filtros
 response = requests.post(
@@ -429,6 +489,14 @@ print(f"Modo: {stats['modo']}")
 ### JavaScript
 
 ```javascript
+// Listar documentos disponibles
+const docsResponse = await fetch('http://localhost:8000/api/v1/bot-simple/documents?limite=10');
+const docsData = await docsResponse.json();
+console.log(`Total documentos: ${docsData.total}`);
+docsData.documentos.forEach(doc => {
+  console.log(`[${doc.id}] ${doc.title} - ${doc.created}`);
+});
+
 // Consulta simple
 const response = await fetch('http://localhost:8000/api/v1/bot-simple/query', {
   method: 'POST',
@@ -452,7 +520,41 @@ results.resultados.forEach(doc => {
 
 ---
 
-## 🌐 Despliegue en Producción (Nginx)
+## 🌐 Despliegue en Producción
+
+### Arquitectura de Despliegue
+
+```
+┌─────────────────────────────────────────────────┐
+│     Cloudflare Zero Trust (Autenticación)       │
+│              HTTPS/SSL Management               │
+│           bots.tech-energy.lat                  │
+└────────────────────┬────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────┐
+│               Nginx (Reverse Proxy)             │
+│         Logs, Rate Limiting, Compression        │
+└────────────────────┬────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────┐
+│          FastAPI (Gunicorn + Uvicorn)           │
+│      Workers: 4  |  Port: 127.0.0.1:8000        │
+└─────────────────────────────────────────────────┘
+```
+
+### 🔒 Cloudflare Zero Trust
+
+La API está protegida con **Cloudflare Zero Trust** que gestiona:
+- ✅ **Autenticación y autorización** (SSO, MFA, etc.)
+- ✅ **SSL/TLS** (certificados automáticos)
+- ✅ **DDoS protection** (capa 7)
+- ✅ **WAF** (Web Application Firewall)
+- ✅ **Rate limiting** por IP/usuario
+- ✅ **Geo-blocking** y filtros personalizados
+
+**Dominio de producción:** `https://bots.tech-energy.lat`
 
 ### 1. Configuración de Nginx
 
@@ -461,18 +563,7 @@ Crear `/etc/nginx/sites-available/bots-api`:
 ```nginx
 server {
     listen 80;
-    server_name api.tudominio.com;
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name api.tudominio.com;
-
-    # SSL (Let's Encrypt)
-    ssl_certificate /etc/letsencrypt/live/api.tudominio.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.tudominio.com/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
+    server_name bots.tech-energy.lat;
 
     # Logs
     access_log /var/log/nginx/bots-api-access.log;
@@ -481,6 +572,10 @@ server {
     # Límite de request
     client_max_body_size 50M;
 
+    # Headers de Cloudflare
+    real_ip_header CF-Connecting-IP;
+    set_real_ip_from 0.0.0.0/0;
+
     # Proxy a FastAPI
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -488,8 +583,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
         
-        # Timeouts para consultas largas
+        # Timeouts para consultas largas (razonamiento con IA)
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
@@ -498,6 +594,12 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+    }
+
+    # Health check endpoint (sin autenticación)
+    location /health {
+        proxy_pass http://127.0.0.1:8000/health;
+        access_log off;
     }
 }
 ```
@@ -560,17 +662,27 @@ sudo systemctl enable bots-api
 sudo systemctl status bots-api
 ```
 
-### 5. SSL con Let's Encrypt
+### 5. Cloudflare Tunnel (Opcional)
+
+Si usas Cloudflare Tunnel en lugar de abrir puertos:
 
 ```bash
-# Instalar certbot
-sudo apt install certbot python3-certbot-nginx
+# Instalar cloudflared
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+sudo dpkg -i cloudflared.deb
 
-# Obtener certificado
-sudo certbot --nginx -d api.tudominio.com
+# Autenticar
+cloudflared tunnel login
 
-# Auto-renewal ya configurado
-sudo certbot renew --dry-run
+# Crear tunnel
+cloudflared tunnel create bots-api
+
+# Configurar tunnel (ver config en dashboard de Cloudflare)
+cloudflared tunnel route dns bots-api bots.tech-energy.lat
+
+# Ejecutar como servicio
+sudo cloudflared service install
+sudo systemctl start cloudflared
 ```
 
 ### 6. Firewall
