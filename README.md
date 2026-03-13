@@ -100,15 +100,103 @@ python scripts/iniciar_api.py
 ## 🏗️ Instalación
 
 ### Requisitos Previos
-- Python 3.11+ instalado
-- Git instalado
-- Acceso a Paperless-ngx
-- Ollama o clave de OpenAI
+- **Python 3.11+** (probado con Python 3.12.3)
+- **Git** instalado
+- **Acceso a Paperless-ngx**
+- **Ollama** (local) o **clave de OpenAI** (cloud)
 
-### Pasos de Instalación
+### Instalación en Ubuntu/Linux
+
+#### 1. Instalar Dependencias del Sistema
+
+**Ubuntu 24.04 / Debian:**
+```bash
+# Actualizar paquetes
+sudo apt update && sudo apt upgrade -y
+
+# Instalar Python y herramientas de desarrollo
+sudo apt install -y \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
+    python3-pip \
+    build-essential \
+    pkg-config \
+    libsqlite3-dev \
+    git \
+    curl
+
+# Verificar versión de Python
+python3 --version  # Debe mostrar Python 3.12.3
+```
+
+**CentOS/RHEL/Rocky Linux:**
+```bash
+sudo dnf install -y python3.12 python3.12-devel gcc gcc-c++ make sqlite-devel git
+```
+
+#### 2. Clonar Repositorio
 
 ```bash
-# 1. Clonar repositorio (si aplica)
+git clone <repo-url>
+cd langchain
+```
+
+#### 3. Crear Entorno Virtual
+
+```bash
+# Crear entorno virtual con Python 3.12
+python3 -m venv .venv
+
+# Si usas Python 3.12 específicamente:
+python3.12 -m venv .venv
+```
+
+#### 4. Activar Entorno Virtual
+
+```bash
+# Linux/Mac
+source .venv/bin/activate
+
+# Verificar que estás en el venv
+which python3  # Debe mostrar: /home/usuario/langchain/.venv/bin/python3
+```
+
+#### 5. Actualizar pip y Herramientas
+
+```bash
+# Actualizar pip a la última versión
+pip install --upgrade pip setuptools wheel
+
+# Verificar pip
+pip --version
+```
+
+#### 6. Instalar Dependencias de Python
+
+```bash
+# Instalar todas las dependencias
+pip install -r requirements.txt
+
+# Si hay errores con algún paquete específico, instalar primero las dependencias base:
+pip install numpy pydantic
+pip install -r requirements.txt
+```
+
+#### 7. Verificar Instalación
+
+```bash
+# Probar imports
+python3 scripts/test_api_imports.py
+
+# Verificar conexión con Paperless
+python3 scripts/probar_paperless.py
+```
+
+### Instalación en Windows
+
+```bash
+# 1. Clonar repositorio
 git clone <repo-url>
 cd langchain
 
@@ -116,16 +204,47 @@ cd langchain
 python -m venv .venv
 
 # 3. Activar entorno
-# Windows PowerShell:
 .venv\Scripts\Activate.ps1
-# Linux/Mac:
-source .venv/bin/activate
 
 # 4. Instalar dependencias
+pip install --upgrade pip
 pip install -r requirements.txt
 
 # 5. Verificar instalación
 python scripts/test_api_imports.py
+```
+
+### Solución de Problemas Comunes
+
+#### Error: "No module named '_sqlite3'"
+```bash
+# Ubuntu/Debian
+sudo apt install -y libsqlite3-dev
+python3 -m venv .venv --clear  # Recrear venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+#### Error: "error: command 'gcc' failed"
+```bash
+# Instalar compiladores
+sudo apt install -y build-essential python3-dev
+```
+
+#### Error: "externally-managed-environment"
+```bash
+# Asegúrate de estar en el entorno virtual
+source .venv/bin/activate
+# Si persiste, usa:
+pip install --break-system-packages -r requirements.txt  # ⚠️ NO recomendado
+```
+
+#### Error al instalar ChromaDB o paquetes con C extensions
+```bash
+# Instalar dependencias de desarrollo
+sudo apt install -y python3.12-dev libsqlite3-dev pkg-config
+# Reinstalar
+pip install --no-cache-dir chromadb
 ```
 
 ---
@@ -290,25 +409,61 @@ langchain/
 
 ### Desarrollo (con auto-reload)
 
+**Linux/Ubuntu:**
 ```bash
+# Activar entorno virtual
+source .venv/bin/activate
+
+# Opción 1: Script simplificado (recomendado)
+python3 scripts/iniciar_api.py
+
+# Opción 2: Uvicorn directo
+python3 -m uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+
+# Opción 3: Con Gunicorn en desarrollo
+gunicorn api.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --reload
+```
+
+**Windows:**
+```powershell
+# Activar entorno virtual
+.venv\Scripts\Activate.ps1
+
 # Opción 1: Script simplificado (recomendado)
 python scripts/iniciar_api.py
 
 # Opción 2: Uvicorn directo
-uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
-
-# Opción 3: Módulo Python
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Producción
+### Producción en Servidor Ubuntu
 
+**Opción 1: Gunicorn + Uvicorn (Recomendado)**
 ```bash
-# Con Uvicorn (4 workers)
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+# Con 4 workers (ajustar según CPUs: (2 x núcleos) + 1)
+gunicorn api.main:app \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000 \
+    --access-logfile /var/log/bots-api/access.log \
+    --error-logfile /var/log/bots-api/error.log \
+    --log-level info \
+    --timeout 300 \
+    --graceful-timeout 300
+```
 
-# Con Gunicorn + Uvicorn workers (recomendado)
-gunicorn api.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+**Opción 2: Systemd Service**
+```bash
+# Ver sección "Servicio Systemd" para configuración completa
+sudo systemctl start bots-api
+sudo systemctl status bots-api
+sudo journalctl -u bots-api -f  # Ver logs en tiempo real
+```
+
+**Opción 3: Uvicorn Standalone**
+```bash
+# Solo para testing, no recomendado para producción
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ### Docker
@@ -319,6 +474,47 @@ docker build -t bots-api .
 
 # Run
 docker run -d -p 8000:8000 --env-file .env bots-api
+
+# Con docker-compose
+docker-compose up -d
+```
+
+### Ejecutar en Background (Sin Systemd)
+
+**Linux/Ubuntu:**
+```bash
+# Con nohup
+nohup gunicorn api.main:app \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000 \
+    > /var/log/bots-api.log 2>&1 &
+
+# Ver PID
+echo $!
+
+# Verificar proceso
+ps aux | grep gunicorn
+
+# Detener
+pkill -f gunicorn
+```
+
+**Con screen o tmux:**
+```bash
+# Iniciar screen
+screen -S bots-api
+
+# Ejecutar API
+python3 scripts/iniciar_api.py
+
+# Detach: Ctrl+A, luego D
+
+# Re-attach
+screen -r bots-api
+
+# Listar screens
+screen -ls
 ```
 
 ---
@@ -617,9 +813,76 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 3. Servicio Systemd
+### 3. Servicio Systemd para Ubuntu 24.04
+
+#### Preparación
+
+```bash
+# 1. Instalar Gunicorn si no está instalado
+source /home/usuario/langchain/.venv/bin/activate
+pip install gunicorn
+
+# 2. Crear directorio para logs
+sudo mkdir -p /var/log/bots-api
+sudo chown $USER:$USER /var/log/bots-api
+
+# 3. Verificar que el .env existe con las credenciales correctas
+cat /home/usuario/langchain/.env
+```
+
+#### Crear Servicio
 
 Crear `/etc/systemd/system/bots-api.service`:
+
+```ini
+[Unit]
+Description=Bots API - FastAPI con Uvicorn y Gunicorn
+After=network.target
+Documentation=https://github.com/tu-usuario/langchain
+
+[Service]
+Type=notify
+User=TU_USUARIO          # ⚠️ CAMBIAR por tu usuario (ej: ubuntu, admin, etc.)
+Group=TU_USUARIO         # ⚠️ CAMBIAR por tu grupo
+WorkingDirectory=/home/TU_USUARIO/langchain  # ⚠️ CAMBIAR ruta completa
+
+# Variables de entorno
+Environment="PATH=/home/TU_USUARIO/langchain/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PYTHONPATH=/home/TU_USUARIO/langchain"
+EnvironmentFile=/home/TU_USUARIO/langchain/.env
+
+# Comando de inicio
+ExecStart=/home/TU_USUARIO/langchain/.venv/bin/gunicorn api.main:app \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 \
+    --access-logfile /var/log/bots-api/access.log \
+    --error-logfile /var/log/bots-api/error.log \
+    --log-level info \
+    --timeout 300 \
+    --graceful-timeout 300 \
+    --keep-alive 5
+
+# Reinicio automático
+Restart=always
+RestartSec=10
+StartLimitInterval=5min
+StartLimitBurst=10
+
+# Seguridad (opcional)
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Límites de recursos
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### Ejemplo con Rutas Reales
+
+Para usuario `ubuntu` en `/home/ubuntu/langchain`:
 
 ```ini
 [Unit]
@@ -628,16 +891,21 @@ After=network.target
 
 [Service]
 Type=notify
-User=www-data
-Group=www-data
-WorkingDirectory=/app/langchain
-Environment="PATH=/app/langchain/.venv/bin"
-ExecStart=/app/langchain/.venv/bin/gunicorn api.main:app \
-    -w 4 \
-    -k uvicorn.workers.UvicornWorker \
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/langchain
+
+Environment="PATH=/home/ubuntu/langchain/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PYTHONPATH=/home/ubuntu/langchain"
+EnvironmentFile=/home/ubuntu/langchain/.env
+
+ExecStart=/home/ubuntu/langchain/.venv/bin/gunicorn api.main:app \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
     --bind 127.0.0.1:8000 \
     --access-logfile /var/log/bots-api/access.log \
-    --error-logfile /var/log/bots-api/error.log
+    --error-logfile /var/log/bots-api/error.log \
+    --timeout 300
 
 Restart=always
 RestartSec=10
@@ -649,17 +917,48 @@ WantedBy=multi-user.target
 ### 4. Iniciar Servicio
 
 ```bash
-# Crear logs
-sudo mkdir -p /var/log/bots-api
-sudo chown www-data:www-data /var/log/bots-api
-
-# Activar servicio
+# Recargar systemd
 sudo systemctl daemon-reload
+
+# Verificar sintaxis del servicio
+sudo systemd-analyze verify /etc/systemd/system/bots-api.service
+
+# Iniciar servicio
 sudo systemctl start bots-api
+
+# Verificar estado
+sudo systemctl status bots-api
+
+# Ver logs en tiempo real
+sudo journalctl -u bots-api -f
+
+# Habilitar inicio automático
 sudo systemctl enable bots-api
 
-# Verificar status
-sudo systemctl status bots-api
+# Reiniciar servicio (si haces cambios)
+sudo systemctl restart bots-api
+```
+
+#### Comandos Útiles de Systemd
+
+```bash
+# Ver logs del servicio
+sudo journalctl -u bots-api -n 50            # Últimas 50 líneas
+sudo journalctl -u bots-api --since today    # Logs de hoy
+sudo journalctl -u bots-api --since "10 minutes ago"
+
+# Detener servicio
+sudo systemctl stop bots-api
+
+# Recargar configuración si editas el .service
+sudo systemctl daemon-reload
+sudo systemctl restart bots-api
+
+# Verificar si está activo
+systemctl is-active bots-api
+
+# Ver procesos
+ps aux | grep gunicorn
 ```
 
 ### 5. Cloudflare Tunnel (Opcional)
@@ -698,6 +997,7 @@ sudo ufw status
 
 ### Puerto 8000 ocupado
 
+**Windows PowerShell:**
 ```powershell
 # Ver qué proceso usa el puerto
 Get-NetTCPConnection -LocalPort 8000 | ForEach-Object {
@@ -711,53 +1011,246 @@ Stop-Process -Id <PID> -Force
 Get-Process python | Stop-Process -Force
 ```
 
+**Linux/Ubuntu:**
+```bash
+# Ver qué proceso usa el puerto
+sudo lsof -i :8000
+# O con netstat
+sudo netstat -tulpn | grep :8000
+
+# Ver detalles del proceso
+ps aux | grep 8000
+
+# Detener proceso específico
+sudo kill -9 <PID>
+
+# Detener todos los Gunicorn
+pkill -f gunicorn
+
+# Detener servicio systemd
+sudo systemctl stop bots-api
+```
+
+### Errores al Instalar Dependencias en Ubuntu
+
+**Error: "No module named '_sqlite3'"**
+```bash
+# Instalar sqlite3 development
+sudo apt install -y libsqlite3-dev
+
+# Recrear entorno virtual
+deactivate  # Si está activado
+rm -rf .venv
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+**Error: "error: command 'gcc' failed"**
+```bash
+# Instalar herramientas de compilación
+sudo apt install -y build-essential python3-dev
+
+# Intentar de nuevo
+pip install -r requirements.txt
+```
+
+**Error: "externally-managed-environment"**
+```bash
+# Asegúrate de estar en el entorno virtual
+which python3
+# Debe mostrar: /home/usuario/langchain/.venv/bin/python3
+
+# Si no estás en venv:
+source .venv/bin/activate
+
+# Verificar
+pip --version  # Debe mostrar la ruta del venv
+```
+
+**Error al instalar chromadb o hnswlib**
+```bash
+# Instalar dependencias de desarrollo
+sudo apt install -y \
+    python3.12-dev \
+    libsqlite3-dev \
+    pkg-config \
+    build-essential
+
+# Limpiar caché e instalar
+pip cache purge
+pip install --no-cache-dir chromadb hnswlib
+```
+
+**Error: "ModuleNotFoundError: No module named 'distutils'"**
+```bash
+# Python 3.12 deprecó distutils
+sudo apt install -y python3-setuptools
+pip install --upgrade setuptools
+```
+
 ### Servidor no responde
 
-1. **Verificar que está corriendo:**
-   ```bash
-   curl http://localhost:8000/health
-   ```
+**1. Verificar que está corriendo:**
+```bash
+# Probar endpoint de health
+curl http://localhost:8000/health
 
-2. **Revisar logs de inicio:**
-   Espera a ver `✅ API lista para recibir peticiones`
+# Con más detalles
+curl -v http://localhost:8000/health
+```
 
-3. **Error de Ollama (normal):**
-   ```
-   ⚠️ Error indexando documento: ... timeout 524
-   ```
-   - Servidor remoto de Ollama sobrecargado
-   - API **continúa funcionando** de todos modos
-   - Solo afecta bot simple si Ollama es necesario
+**2. Revisar logs:**
 
-### ModuleNotFoundError
+**Si usas systemd:**
+```bash
+# Ver logs en tiempo real
+sudo journalctl -u bots-api -f
+
+# Ver últimas 100 líneas
+sudo journalctl -u bots-api -n 100
+
+# Ver logs de hoy
+sudo journalctl -u bots-api --since today
+```
+
+**Si ejecutas manualmente:**
+```bash
+# Los logs aparecen en la terminal donde ejecutaste el script
+# O verifica:
+cat /var/log/bots-api/access.log
+cat /var/log/bots-api/error.log
+```
+
+**3. Error de Ollama (normal):**
+```
+⚠️ Error indexando documento: ... timeout 524
+```
+- Servidor remoto de Ollama sobrecargado
+- API **continúa funcionando** de todos modos
+- Solo afecta bot simple si Ollama es necesario
+
+### Problemas con el Servicio Systemd
+
+**El servicio no inicia:**
+```bash
+# Ver errores detallados
+sudo systemctl status bots-api
+sudo journalctl -u bots-api -n 50
+
+# Verificar sintaxis del archivo .service
+sudo systemd-analyze verify /etc/systemd/system/bots-api.service
+
+# Verificar permisos del archivo .env
+ls -la /home/usuario/langchain/.env
+chmod 600 /home/usuario/langchain/.env
+```
+
+**Variables de entorno no se cargan:**
+```bash
+# Verificar que EnvironmentFile apunta al .env correcto
+cat /etc/systemd/system/bots-api.service | grep EnvironmentFile
+
+# Verificar contenido del .env
+cat /home/usuario/langchain/.env
+
+# Recargar configuración
+sudo systemctl daemon-reload
+sudo systemctl restart bots-api
+```
+
+**El servicio se detiene después de un tiempo:**
+```bash
+# Ver motivo del stop
+sudo journalctl -u bots-api | grep -i "stopped\|failed"
+
+# Aumentar timeout en el .service si es necesario
+# Agregar en [Service]:
+TimeoutStartSec=300
+TimeoutStopSec=300
+```
+
+### ModuleNotFoundError en Producción
 
 ```bash
 # Activar entorno virtual
-.venv\Scripts\Activate.ps1  # Windows
-source .venv/bin/activate   # Linux
+source .venv/bin/activate
+
+# Verificar que estás en el venv correcto
+which python3
+pip list | grep fastapi
 
 # Reinstalar dependencias
 pip install -r requirements.txt
+
+# Si usas systemd, reiniciar servicio
+sudo systemctl restart bots-api
 ```
 
 ### ChromaDB corrupto
 
 ```bash
-# Detener servidor (CTRL+C)
+# Detener servidor
+sudo systemctl stop bots-api  # Si usas systemd
+# O CTRL+C si ejecutas manualmente
 
-# Eliminar ChromaDB
-Remove-Item -Path "chroma_db" -Recurse -Force  # Windows
-rm -rf chroma_db  # Linux
+# Backup y eliminar ChromaDB
+mv chroma_db chroma_db.backup
+# O eliminar completamente:
+rm -rf chroma_db
 
 # Reiniciar (recreará ChromaDB automáticamente)
-python scripts/iniciar_api.py
+sudo systemctl start bots-api  # O python3 scripts/iniciar_api.py
 ```
 
 ### Swagger UI no carga
 
-1. **Limpiar caché:** CTRL + Shift + R
-2. **Probar ReDoc:** http://localhost:8000/redoc
-3. **Verificar servidor:** `curl http://localhost:8000/health`
+1. **Limpiar caché del navegador:** CTRL + Shift + R
+2. **Probar ReDoc:** http://localhost:8000/redoc o https://bots.tech-energy.lat/redoc
+3. **Verificar servidor:** 
+   ```bash
+   curl http://localhost:8000/health
+   ```
+4. **Verificar logs de Nginx:**
+   ```bash
+   sudo tail -f /var/log/nginx/bots-api-error.log
+   ```
+
+### Problemas de Permisos
+
+```bash
+# Error: Permission denied al crear logs
+sudo mkdir -p /var/log/bots-api
+sudo chown $(whoami):$(whoami) /var/log/bots-api
+
+# Error: Cannot write to chroma_db
+cd /home/usuario/langchain
+sudo chown -R $(whoami):$(whoami) chroma_db
+
+# Verificar permisos del proyecto
+ls -la
+# Todos los archivos deben pertenecer a tu usuario
+```
+
+### Nginx no puede conectar a FastAPI
+
+```bash
+# Verificar que FastAPI está corriendo en 127.0.0.1:8000
+curl http://127.0.0.1:8000/health
+
+# Ver logs de Nginx
+sudo tail -f /var/log/nginx/bots-api-error.log
+
+# Verificar configuración de Nginx
+sudo nginx -t
+
+# Recargar Nginx
+sudo systemctl reload nginx
+
+# Verificar que no hay firewall bloqueando
+sudo ufw status
+```
 
 ---
 
@@ -765,63 +1258,251 @@ python scripts/iniciar_api.py
 
 ### Gestión del Servidor
 
+**Iniciar API:**
 ```bash
-# Iniciar
+# Desarrollo (Windows)
 python scripts/iniciar_api.py
 
-# Detener: CTRL+C en la terminal
+# Desarrollo (Linux/Ubuntu)
+python3 scripts/iniciar_api.py
 
-# Ver procesos
-Get-Process python  # Windows
-ps aux | grep python  # Linux
+# Producción (systemd)
+sudo systemctl start bots-api
+sudo systemctl status bots-api
+```
 
-# Ver puerto 8000
-Get-NetTCPConnection -LocalPort 8000  # Windows
-lsof -i :8000  # Linux
+**Detener API:**
+```bash
+# Desarrollo: CTRL+C en la terminal
 
-# Matar procesos Python
+# Producción (systemd)
+sudo systemctl stop bots-api
+
+# Matar procesos
+pkill -f gunicorn  # Linux
+pkill -f uvicorn   # Linux
 Get-Process python | Stop-Process -Force  # Windows
-pkill python  # Linux
+```
+
+**Ver procesos:**
+```bash
+# Linux/Ubuntu
+ps aux | grep python
+ps aux | grep gunicorn
+top -p $(pgrep -d',' python3)
+
+# Windows
+Get-Process python
+Get-Process | Where-Object {$_.ProcessName -match "python"}
+```
+
+**Ver puerto 8000:**
+```bash
+# Linux/Ubuntu
+sudo lsof -i :8000
+sudo netstat -tulpn | grep :8000
+ss -tulpn | grep :8000
+
+# Windows
+Get-NetTCPConnection -LocalPort 8000
+netstat -ano | findstr :8000
+```
+
+### Gestión de Logs en Ubuntu
+
+```bash
+# Ver logs del servicio systemd
+sudo journalctl -u bots-api -f              # Tiempo real
+sudo journalctl -u bots-api -n 100          # Últimas 100 líneas
+sudo journalctl -u bots-api --since today   # Hoy
+sudo journalctl -u bots-api --since "10 minutes ago"
+sudo journalctl -u bots-api --since "2024-03-13 10:00:00"
+
+# Ver logs de archivos
+tail -f /var/log/bots-api/access.log
+tail -f /var/log/bots-api/error.log
+less /var/log/bots-api/access.log
+
+# Logs de Nginx
+sudo tail -f /var/log/nginx/bots-api-access.log
+sudo tail -f /var/log/nginx/bots-api-error.log
+sudo tail -f /var/log/nginx/error.log
+
+# Limpiar logs viejos
+sudo truncate -s 0 /var/log/bots-api/access.log
+sudo truncate -s 0 /var/log/bots-api/error.log
+
+# Ver tamaño de logs
+du -sh /var/log/bots-api/
+du -sh /var/log/nginx/
+```
+
+### Gestión del Servicio Systemd
+
+```bash
+# Ver estado
+sudo systemctl status bots-api
+systemctl is-active bots-api
+systemctl is-enabled bots-api
+
+# Iniciar/Detener/Reiniciar
+sudo systemctl start bots-api
+sudo systemctl stop bots-api
+sudo systemctl restart bots-api
+sudo systemctl reload bots-api
+
+# Habilitar/Deshabilitar inicio automático
+sudo systemctl enable bots-api
+sudo systemctl disable bots-api
+
+# Editar configuración
+sudo systemctl edit bots-api --full
+sudo systemctl daemon-reload
+
+# Ver configuración efectiva
+systemctl cat bots-api
+systemctl show bots-api
 ```
 
 ### Testing
 
 ```bash
 # Test completo
-python scripts/test_api_cliente.py
+python3 scripts/test_api_cliente.py
 
 # Validar imports
-python scripts/test_api_imports.py
+python3 scripts/test_api_imports.py
 
 # Health check
 curl http://localhost:8000/health
+curl https://bots.tech-energy.lat/health
+
+# Health check con detalles
+curl -v http://localhost:8000/health
+
+# Test de endpoints
+curl -X POST "http://localhost:8000/api/v1/bot-simple/query" \
+  -H "Content-Type: application/json" \
+  -d '{"pregunta": "test"}'
+
+# Listar documentos
+curl "http://localhost:8000/api/v1/bot-simple/documents?limite=5"
 ```
 
-### Diagnóstico
+### Diagnóstico y Monitoreo
 
+**Conectividad:**
 ```bash
-# Ver logs (si systemd)
-sudo journalctl -u bots-api -f
-
-# Ver logs de Nginx
-sudo tail -f /var/log/nginx/bots-api-access.log
-
-# Test de conectividad
-Test-NetConnection -ComputerName localhost -Port 8000  # Windows
+# Test de puerto
 nc -zv localhost 8000  # Linux
+telnet localhost 8000  # Windows
+nmap -p 8000 localhost
+
+# Test desde otro servidor
+curl -I https://bots.tech-energy.lat/health
+```
+
+**Recursos del sistema:**
+```bash
+# CPU y RAM de procesos Python
+top -p $(pgrep -d',' python3)
+htop -p $(pgrep -d',' python3)
+
+# Memoria usada por el proceso
+ps aux | grep gunicorn | awk '{sum+=$6} END {print sum/1024 " MB"}'
+
+# Uso de disco
+df -h
+du -sh chroma_db/
+du -sh .venv/
+
+# Network stats
+netstat -s
+ss -s
+```
+
+**Performance:**
+```bash
+# Tiempo de respuesta
+time curl http://localhost:8000/health
+
+# Múltiples requests
+for i in {1..10}; do curl -w "\nTime: %{time_total}s\n" http://localhost:8000/health; done
+
+# Con Apache Bench
+ab -n 100 -c 10 http://localhost:8000/health
 ```
 
 ### Mantenimiento
 
+**Reindexar documentos:**
 ```bash
-# Reindexar documentos
 curl -X POST http://localhost:8000/api/v1/bot-avanzado/reindexar
+curl -X POST https://bots.tech-energy.lat/api/v1/bot-avanzado/reindexar
+```
 
-# Ver estadísticas
-curl http://localhost:8000/api/v1/bot-avanzado/stats
+**Ver estadísticas:**
+```bash
+curl http://localhost:8000/api/v1/bot-avanzado/stats | python3 -m json.tool
+```
 
-# Restart del servicio (producción)
+**Actualizar código en producción:**
+```bash
+# 1. Ir al directorio del proyecto
+cd /home/usuario/langchain
+
+# 2. Activar venv y hacer pull
+source .venv/bin/activate
+git pull origin main
+
+# 3. Actualizar dependencias si es necesario
+pip install -r requirements.txt
+
+# 4. Reiniciar servicio
 sudo systemctl restart bots-api
+
+# 5. Verificar que funciona
+sudo systemctl status bots-api
+curl http://localhost:8000/health
+
+# 6. Ver logs por si hay errores
+sudo journalctl -u bots-api -n 50
+```
+
+**Backup:**
+```bash
+# Backup del .env
+cp .env .env.backup
+
+# Backup de ChromaDB
+tar -czf chroma_db_backup_$(date +%Y%m%d).tar.gz chroma_db/
+
+# Backup completo
+tar -czf langchain_backup_$(date +%Y%m%d).tar.gz \
+    --exclude='.venv' \
+    --exclude='__pycache__' \
+    --exclude='*.pyc' \
+    /home/usuario/langchain/
+```
+
+### Nginx
+
+```bash
+# Verificar configuración
+sudo nginx -t
+
+# Recargar configuración
+sudo systemctl reload nginx
+sudo systemctl restart nginx
+
+# Ver configuración activa
+sudo nginx -T
+
+# Estado del servicio
+sudo systemctl status nginx
+
+# Ver puertos en uso de Nginx
+sudo netstat -tulpn | grep nginx
 ```
 
 ---
