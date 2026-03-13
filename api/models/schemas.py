@@ -113,13 +113,65 @@ class QueryAvanzadaResponse(BaseModel):
 
 
 class DocumentoInfo(BaseModel):
-    """Información de un documento"""
+    """Información de un documento (chunk)"""
     doc_id: str
     title: str
     chunk_index: int
     total_chunks: int
     created: str
     preview: str = Field(..., description="Preview del contenido")
+    score: Optional[float] = Field(None, description="Score de similitud")
+
+
+class DocumentoPaperless(BaseModel):
+    """Documento completo de Paperless"""
+    id: int = Field(..., description="ID del documento en Paperless")
+    title: str = Field(..., description="Título del documento")
+    created: str = Field(..., description="Fecha de creación")
+    modified: Optional[str] = Field(None, description="Fecha de modificación")
+    content: Optional[str] = Field(None, description="Contenido (si se solicita)")
+    archive_serial_number: Optional[int] = Field(None, description="Número de archivo")
+    correspondent: Optional[int] = Field(None, description="ID del corresponsal")
+    document_type: Optional[int] = Field(None, description="ID del tipo de documento")
+    tags: Optional[List[int]] = Field(default_factory=list, description="IDs de tags")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": 1,
+                "title": "Código de Ética y Conducta",
+                "created": "2026-03-10",
+                "modified": "2026-03-11",
+                "archive_serial_number": None,
+                "correspondent": None,
+                "document_type": 1,
+                "tags": []
+            }
+        }
+
+
+class DocumentosListResponse(BaseModel):
+    """Response para lista de documentos"""
+    documentos: List[DocumentoPaperless]
+    total: int = Field(..., description="Total de documentos")
+    tiempo_respuesta: float = Field(..., description="Tiempo en segundos")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "documentos": [
+                    {
+                        "id": 1,
+                        "title": "Código de Ética",
+                        "created": "2026-03-10",
+                        "modified": "2026-03-11",
+                        "tags": []
+                    }
+                ],
+                "total": 1,
+                "tiempo_respuesta": 0.5
+            }
+        }
     
 
 class BusquedaSemanticaResponse(BaseModel):

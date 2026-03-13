@@ -1,41 +1,164 @@
-# 🤖 Proyecto LangChain - Bots Empresariales
+# 🤖 API REST - Bots de Documentos con LangChain
 
-Proyecto de bots inteligentes usando LangChain para consultas de Recursos Humanos y documentos en Paperless, con IA local mediante Ollama.
+API REST construida con **FastAPI** para consultas inteligentes de documentos usando **LangChain**, **ChromaDB**, **OpenAI** y **Ollama**.
+
+---
 
 ## 📋 Tabla de Contenidos
 
-- [Características](#características)
-- [Estructura del Proyecto](#estructura-del-proyecto)
-- [Instalación](#instalación)
-- [Configuración](#configuración)
-- [Uso de los Bots](#uso-de-los-bots)
-- [Scripts de Utilidad](#scripts-de-utilidad)
-- [Ejemplos de Consultas](#ejemplos-de-consultas)
+- [Inicio Rápido](#-inicio-rápido-5-minutos)
+- [Características](#-características)
+- [Instalación](#-instalación)
+- [Configuración](#️-configuración)
+- [Estructura del Proyecto](#-estructura-del-proyecto)
+- [Endpoints de la API](#-endpoints-de-la-api)
+- [Cómo Ejecutar](#-cómo-ejecutar)
+- [Validar Funcionamiento](#-validar-funcionamiento)
+- [Ejemplos de Uso](#-ejemplos-de-uso)
+- [Despliegue en Producción](#-despliegue-en-producción-nginx)
+- [Solución de Problemas](#-solución-de-problemas)
+- [Comandos Útiles](#️-comandos-útiles)
+
+---
+
+## 🚀 Inicio Rápido (5 minutos)
+
+```bash
+# 1. Activar entorno virtual
+.venv\Scripts\Activate.ps1  # Windows
+source .venv/bin/activate   # Linux/Mac
+
+# 2. Instalar dependencias
+pip install -r requirements.txt
+
+# 3. Configurar .env
+# Editar .env con tus valores (ver sección Configuración)
+
+# 4. Ejecutar API
+python scripts/iniciar_api.py
+
+# 5. Abrir documentación
+# http://localhost:8000/docs
+```
+
+**Acceder a:**
+- 🌐 **Swagger UI**: http://localhost:8000/docs
+- 📖 **ReDoc**: http://localhost:8000/redoc
+- ❤️ **Health Check**: http://localhost:8000/health
 
 ---
 
 ## ✨ Características
 
-### Bots Disponibles
+### 🌐 API REST
+- **FastAPI 0.135.1**: Framework moderno, rápido y con documentación automática
+- **Swagger UI**: Documentación interactiva con "Try it out"
+- **Pydantic**: Validación automática con esquemas y ejemplos
+- **Health checks**: Monitoreo de servicios por componente
+- **Singleton pattern**: Bots se inicializan una sola vez (eficiente)
+- **CORS**: Configurado y listo
+- **Logging**: Tracking de requests con tiempos (header `X-Process-Time`)
 
-- **🤖 Bot General**: Consulta inteligente de RH y documentos Paperless con IA
-- **👥 Bot de RH**: Especializado en consultas de Recursos Humanos
-- **📄 Bot de Documentos**: Búsqueda inteligente y análisis de documentos con OCR
-- **🚀 Bot Avanzado (NUEVO)**: Sistema de vectorización con ChromaDB
-  - 🗄️ ChromaDB: Base de datos vectorial persistente
-  - ☁️ Dual: OpenAI (cloud) o Ollama (local)
-  - ⚡ Modo Consulta Rápida: Respuestas directas
-  - 🧠 Modo Razonamiento: Análisis complejos
-  - 💰 Monitor de costos: Tracking de tokens y gastos
+### 🤖 Bots Inteligentes
 
-### Tecnologías
+**Bot Simple** (`/api/v1/bot-simple`)
+- 🗄️ ChromaDB local + Ollama (phi4-mini:latest)
+- ⚡ Búsqueda vectorial sin costos de API
+- 📄 87 vectores indexados
+- 🔍 4 endpoints: query, analyze-document, recent-documents, health
 
-- **🧠 IA Local**: Ollama (phi4-mini:latest) - sin costos de API
-- **☁️ IA Cloud**: OpenAI (GPT-4o-mini, GPT-4o) - opcional
-- **🗄️ Vectorización**: ChromaDB con persistencia local
-- **📄 OCR**: Integración con Paperless-ngx
-- **🔍 Búsqueda Inteligente**: LangChain con embeddings semánticos
-- **⚙️ Configuración Simple**: Todo en un archivo `.env`
+**Bot Avanzado** (`/api/v1/bot-avanzado`)
+- ☁️ ChromaDB + OpenAI (gpt-5-nano)
+- 🧠 Modo rápido: 3 chunks, respuestas directas
+- 🤔 Modo razonamiento: 10-20 chunks, análisis profundo
+- 🔎 Búsqueda semántica pura (sin LLM)
+- 📊 116 vectores, estadísticas, reindexación
+- 💰 Monitor de costos y tokens
+- 📈 6 endpoints completos
+
+### 🛠️ Stack Tecnológico
+- **API**: FastAPI + Uvicorn + Gunicorn (producción)
+- **IA Local**: Ollama (phi4-mini:latest) - 0 costos
+- **IA Cloud**: OpenAI (gpt-5-nano)
+- **Vectorización**: ChromaDB persistente
+- **Validación**: Pydantic 2.12.5
+- **Documentos**: Paperless-ngx con OCR
+- **Búsqueda**: LangChain con embeddings semánticos
+- **Proxy**: Nginx + SSL/HTTPS (producción)
+
+---
+
+## 🏗️ Instalación
+
+### Requisitos Previos
+- Python 3.11+ instalado
+- Git instalado
+- Acceso a Paperless-ngx
+- Ollama o clave de OpenAI
+
+### Pasos de Instalación
+
+```bash
+# 1. Clonar repositorio (si aplica)
+git clone <repo-url>
+cd langchain
+
+# 2. Crear entorno virtual
+python -m venv .venv
+
+# 3. Activar entorno
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# Linux/Mac:
+source .venv/bin/activate
+
+# 4. Instalar dependencias
+pip install -r requirements.txt
+
+# 5. Verificar instalación
+python scripts/test_api_imports.py
+```
+
+---
+
+## ⚙️ Configuración
+
+### Archivo `.env`
+
+Crea un archivo `.env` en la raíz del proyecto:
+
+```env
+# ===== Paperless-ngx =====
+PAPERLESS_URL=https://paperless.tudominio.com
+PAPERLESS_TOKEN=tu_token_aqui
+
+# ===== Ollama (Local) =====
+OLLAMA_URL=https://ollama.tudominio.com
+OLLAMA_MODEL=phi4-mini:latest
+
+# ===== OpenAI (Cloud - Opcional) =====
+LOCALIA=false  # true = Ollama, false = OpenAI
+OPENAI_API_KEY=sk-...
+
+# ===== ChromaDB =====
+CHROMA_DB_PATH=./chroma_db
+```
+
+### Obtener Token de Paperless
+
+```bash
+python scripts/generar_token_paperless.py
+```
+
+### Verificar Conexiones
+
+```bash
+# Probar Paperless
+python scripts/probar_paperless.py
+
+# Ver modelos Ollama
+python utils/verificar_ollama.py
+```
 
 ---
 
@@ -43,327 +166,618 @@ Proyecto de bots inteligentes usando LangChain para consultas de Recursos Humano
 
 ```
 langchain/
-├── bots/                      # Bots principales
-│   ├── bot_general.py        # Bot que consulta RH + Paperless
-│   ├── bot_rh.py             # Bot especializado en RH
-│   ├── bot_documentos.py     # Bot de búsqueda en documentos
-│   └── bot_documentos_avanzado.py  # 🚀 Bot con ChromaDB y OpenAI
-├── scripts/                   # Scripts de utilidad
-│   ├── crear_db_ejemplo.py   # Crear base de datos de prueba
-│   ├── generar_token_paperless.py
-│   ├── probar_api_rh.py      # Verificar conexión con API RH
-│   ├── probar_paperless.py   # Verificar Paperless
-│   └── probar_bot_avanzado.py  # 🧪 Pruebas del bot avanzado
-├── utils/                     # Herramientas
-│   └── verificar_ollama.py   # Ver modelos disponibles
-├── data/                      # Datos locales
-│   └── empresa.db            # Base de datos SQLite (opcional)
-├── chroma_db/                 # 🗄️ Base de datos vectorial (ChromaDB)
-├── .env                       # Configuración (TU ARCHIVO)
-├── .env.example              # Plantilla de configuración
-├── .gitignore                # Archivos ignorados por Git
-├── requirements.txt          # Dependencias Python
-└── README.md                 # Esta documentación
+├── api/                        # 🌐 API REST
+│   ├── main.py                 #    App FastAPI principal
+│   ├── dependencies.py         #    Singletons de bots
+│   ├── models/
+│   │   └── schemas.py          #    Modelos Pydantic
+│   └── routes/
+│       ├── bot_simple.py       #    4 endpoints bot simple
+│       └── bot_avanzado.py     #    6 endpoints bot avanzado
+├── bot_documentos.py           # 🤖 Bot Simple (Ollama)
+├── bot_documentos_avanzado.py  # 🚀 Bot Avanzado (OpenAI)
+├── scripts/
+│   ├── iniciar_api.py          # ▶️ Iniciar API
+│   ├── test_api_cliente.py     # 🧪 Tests completos
+│   └── test_api_imports.py     # ✅ Validar imports
+├── chroma_db/                  # 📊 Base de datos vectorial
+├── .env                        # 🔐 Configuración (crear)
+└── requirements.txt            # 📦 Dependencias
 ```
 
 ---
 
-## 🚀 Instalación
+## 🎯 Endpoints de la API
 
-### 1. Requisitos Previos
+### **General**
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/` | Información de la API |
+| GET | `/health` | Health check global |
 
-- Python 3.9 o superior
-- Servidor Ollama con modelos instalados
-- Acceso a API de RH (opcional)
-- Instancia de Paperless-ngx (opcional)
+### **Bot Simple** - `/api/v1/bot-simple`
 
-### 2. Instalar Dependencias
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/query` | Consulta general |
+| POST | `/analyze-document` | Analizar documento por ID |
+| GET | `/recent-documents` | Documentos recientes de Paperless |
+| GET | `/health` | Health check del bot |
+
+**Ejemplo Request:**
+```json
+{
+  "pregunta": "¿Qué dice el código de ética sobre integridad?"
+}
+```
+
+**Ejemplo Response:**
+```json
+{
+  "respuesta": "El código de ética define...",
+  "tiempo_respuesta": 2.5
+}
+```
+
+### **Bot Avanzado** - `/api/v1/bot-avanzado`
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/consulta-rapida` | Respuesta rápida (3 chunks) |
+| POST | `/razonamiento-profundo` | Análisis profundo (10-20 chunks) |
+| POST | `/busqueda-semantica` | Búsqueda vectorial sin LLM |
+| GET | `/stats` | Estadísticas (docs, vectores, costos) |
+| POST | `/reindexar` | Forzar reindexación |
+| GET | `/health` | Health check del bot |
+
+**Ejemplo Request (Razonamiento):**
+```json
+{
+  "pregunta": "Analiza las políticas de vacaciones",
+  "filtros": {"created": "2026"},
+  "k": 15
+}
+```
+
+**Ejemplo Response:**
+```json
+{
+  "respuesta": "Análisis detallado...",
+  "chunks_usados": 15,
+  "estadisticas": {
+    "tokens_total": 1500,
+    "costo_usd": 0.00045
+  },
+  "tiempo_respuesta": 12.3
+}
+```
+
+---
+
+## ▶️ Cómo Ejecutar
+
+### Desarrollo (con auto-reload)
+
+```bash
+# Opción 1: Script simplificado (recomendado)
+python scripts/iniciar_api.py
+
+# Opción 2: Uvicorn directo
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+
+# Opción 3: Módulo Python
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Producción
+
+```bash
+# Con Uvicorn (4 workers)
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+# Con Gunicorn + Uvicorn workers (recomendado)
+gunicorn api.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+```
+
+### Docker
+
+```bash
+# Build
+docker build -t bots-api .
+
+# Run
+docker run -d -p 8000:8000 --env-file .env bots-api
+```
+
+---
+
+## ✅ Validar Funcionamiento
+
+### 1. Health Check
+
+```bash
+# PowerShell
+Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing
+
+# cURL
+curl http://localhost:8000/health
+
+# Python
+python -c "import requests; print(requests.get('http://localhost:8000/health').json())"
+```
+
+**Respuesta esperada:**
+```json
+{
+  "status": "healthy",
+  "timestamp": 1773348021.71,
+  "services": {
+    "bot_simple": "/api/v1/bot-simple/health",
+    "bot_avanzado": "/api/v1/bot-avanzado/health"
+  }
+}
+```
+
+### 2. Test Automatizado
+
+```bash
+python scripts/test_api_cliente.py
+```
+
+Prueba todos los endpoints:
+- ✅ Health checks
+- ✅ Consultas al bot simple
+- ✅ Consultas avanzadas
+- ✅ Búsqueda semántica
+- ✅ Estadísticas
+
+### 3. Swagger UI
+
+Abre en tu navegador: **http://localhost:8000/docs**
+
+Usa el botón **"Try it out"** para probar endpoints interactivamente.
+
+---
+
+## 💻 Ejemplos de Uso
+
+### PowerShell
 
 ```powershell
-# Crear entorno virtual (recomendado)
-python -m venv .venv
-.venv\Scripts\Activate.ps1
+# Consulta simple
+$body = @{pregunta="¿Cuál es el horario de trabajo?"} | ConvertTo-Json
+Invoke-WebRequest -Uri "http://localhost:8000/api/v1/bot-simple/query" `
+  -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
 
-# Instalar dependencias
+# Búsqueda semántica
+$body = @{query="seguridad e higiene"; k=5} | ConvertTo-Json
+Invoke-WebRequest -Uri "http://localhost:8000/api/v1/bot-avanzado/busqueda-semantica" `
+  -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
+
+# Estadísticas
+Invoke-WebRequest -Uri "http://localhost:8000/api/v1/bot-avanzado/stats" -UseBasicParsing
+```
+
+### cURL
+
+```bash
+# Consulta simple
+curl -X POST "http://localhost:8000/api/v1/bot-simple/query" \
+  -H "Content-Type: application/json" \
+  -d '{"pregunta": "¿Qué dice el código de ética?"}'
+
+# Razonamiento profundo
+curl -X POST "http://localhost:8000/api/v1/bot-avanzado/razonamiento-profundo" \
+  -H "Content-Type: application/json" \
+  -d '{"pregunta": "Analiza las políticas de vacaciones", "k": 15}'
+
+# Búsqueda semántica
+curl -X POST "http://localhost:8000/api/v1/bot-avanzado/busqueda-semantica" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "seguridad e higiene", "k": 5}'
+
+# Estadísticas
+curl "http://localhost:8000/api/v1/bot-avanzado/stats"
+```
+
+### Python
+
+```python
+import requests
+
+# Consulta al bot simple
+response = requests.post(
+    "http://localhost:8000/api/v1/bot-simple/query",
+    json={"pregunta": "¿Qué dice el código de ética?"}
+)
+data = response.json()
+print(data["respuesta"])
+print(f"Tiempo: {data['tiempo_respuesta']}s")
+
+# Razonamiento profundo con filtros
+response = requests.post(
+    "http://localhost:8000/api/v1/bot-avanzado/razonamiento-profundo",
+    json={
+        "pregunta": "Analiza las políticas de vacaciones",
+        "filtros": {"created": "2026"},
+        "k": 15
+    }
+)
+data = response.json()
+print(data["respuesta"])
+if data["estadisticas"]:
+    print(f"Tokens: {data['estadisticas']['tokens_total']}")
+    print(f"Costo: ${data['estadisticas']['costo_usd']:.6f}")
+
+# Búsqueda semántica
+response = requests.post(
+    "http://localhost:8000/api/v1/bot-avanzado/busqueda-semantica",
+    json={"query": "seguridad e higiene", "k": 5}
+)
+for doc in response.json()["resultados"]:
+    print(f"- {doc['title']} (score: {doc['score']:.4f})")
+    print(f"  {doc['preview'][:100]}...")
+
+# Estadísticas
+response = requests.get("http://localhost:8000/api/v1/bot-avanzado/stats")
+stats = response.json()
+print(f"Documentos: {stats['documentos_totales']}")
+print(f"Vectores: {stats['vectores']}")
+print(f"Modo: {stats['modo']}")
+```
+
+### JavaScript
+
+```javascript
+// Consulta simple
+const response = await fetch('http://localhost:8000/api/v1/bot-simple/query', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({pregunta: '¿Qué dice el código de ética?'})
+});
+const data = await response.json();
+console.log(data.respuesta);
+
+// Búsqueda semántica
+const response2 = await fetch('http://localhost:8000/api/v1/bot-avanzado/busqueda-semantica', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({query: 'seguridad e higiene', k: 5})
+});
+const results = await response2.json();
+results.resultados.forEach(doc => {
+  console.log(`- ${doc.title} (score: ${doc.score.toFixed(4)})`);
+});
+```
+
+---
+
+## 🌐 Despliegue en Producción (Nginx)
+
+### 1. Configuración de Nginx
+
+Crear `/etc/nginx/sites-available/bots-api`:
+
+```nginx
+server {
+    listen 80;
+    server_name api.tudominio.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.tudominio.com;
+
+    # SSL (Let's Encrypt)
+    ssl_certificate /etc/letsencrypt/live/api.tudominio.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.tudominio.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # Logs
+    access_log /var/log/nginx/bots-api-access.log;
+    error_log /var/log/nginx/bots-api-error.log;
+
+    # Límite de request
+    client_max_body_size 50M;
+
+    # Proxy a FastAPI
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Timeouts para consultas largas
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+### 2. Activar Sitio
+
+```bash
+# Crear symlink
+sudo ln -s /etc/nginx/sites-available/bots-api /etc/nginx/sites-enabled/
+
+# Verificar configuración
+sudo nginx -t
+
+# Recargar Nginx
+sudo systemctl reload nginx
+```
+
+### 3. Servicio Systemd
+
+Crear `/etc/systemd/system/bots-api.service`:
+
+```ini
+[Unit]
+Description=Bots API - FastAPI con Uvicorn
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/app/langchain
+Environment="PATH=/app/langchain/.venv/bin"
+ExecStart=/app/langchain/.venv/bin/gunicorn api.main:app \
+    -w 4 \
+    -k uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 \
+    --access-logfile /var/log/bots-api/access.log \
+    --error-logfile /var/log/bots-api/error.log
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 4. Iniciar Servicio
+
+```bash
+# Crear logs
+sudo mkdir -p /var/log/bots-api
+sudo chown www-data:www-data /var/log/bots-api
+
+# Activar servicio
+sudo systemctl daemon-reload
+sudo systemctl start bots-api
+sudo systemctl enable bots-api
+
+# Verificar status
+sudo systemctl status bots-api
+```
+
+### 5. SSL con Let's Encrypt
+
+```bash
+# Instalar certbot
+sudo apt install certbot python3-certbot-nginx
+
+# Obtener certificado
+sudo certbot --nginx -d api.tudominio.com
+
+# Auto-renewal ya configurado
+sudo certbot renew --dry-run
+```
+
+### 6. Firewall
+
+```bash
+sudo ufw allow 'Nginx Full'
+sudo ufw status
+```
+
+---
+
+## 🔧 Solución de Problemas
+
+### Puerto 8000 ocupado
+
+```powershell
+# Ver qué proceso usa el puerto
+Get-NetTCPConnection -LocalPort 8000 | ForEach-Object {
+    Get-Process -Id $_.OwningProcess
+}
+
+# Detener proceso
+Stop-Process -Id <PID> -Force
+
+# O detener todos los Python
+Get-Process python | Stop-Process -Force
+```
+
+### Servidor no responde
+
+1. **Verificar que está corriendo:**
+   ```bash
+   curl http://localhost:8000/health
+   ```
+
+2. **Revisar logs de inicio:**
+   Espera a ver `✅ API lista para recibir peticiones`
+
+3. **Error de Ollama (normal):**
+   ```
+   ⚠️ Error indexando documento: ... timeout 524
+   ```
+   - Servidor remoto de Ollama sobrecargado
+   - API **continúa funcionando** de todos modos
+   - Solo afecta bot simple si Ollama es necesario
+
+### ModuleNotFoundError
+
+```bash
+# Activar entorno virtual
+.venv\Scripts\Activate.ps1  # Windows
+source .venv/bin/activate   # Linux
+
+# Reinstalar dependencias
 pip install -r requirements.txt
 ```
 
-### 3. Verificar Instalación
+### ChromaDB corrupto
 
-```powershell
-# Ver modelos de Ollama disponibles
-python utils/verificar_ollama.py
+```bash
+# Detener servidor (CTRL+C)
+
+# Eliminar ChromaDB
+Remove-Item -Path "chroma_db" -Recurse -Force  # Windows
+rm -rf chroma_db  # Linux
+
+# Reiniciar (recreará ChromaDB automáticamente)
+python scripts/iniciar_api.py
+```
+
+### Swagger UI no carga
+
+1. **Limpiar caché:** CTRL + Shift + R
+2. **Probar ReDoc:** http://localhost:8000/redoc
+3. **Verificar servidor:** `curl http://localhost:8000/health`
+
+---
+
+## 🛠️ Comandos Útiles
+
+### Gestión del Servidor
+
+```bash
+# Iniciar
+python scripts/iniciar_api.py
+
+# Detener: CTRL+C en la terminal
+
+# Ver procesos
+Get-Process python  # Windows
+ps aux | grep python  # Linux
+
+# Ver puerto 8000
+Get-NetTCPConnection -LocalPort 8000  # Windows
+lsof -i :8000  # Linux
+
+# Matar procesos Python
+Get-Process python | Stop-Process -Force  # Windows
+pkill python  # Linux
+```
+
+### Testing
+
+```bash
+# Test completo
+python scripts/test_api_cliente.py
+
+# Validar imports
+python scripts/test_api_imports.py
+
+# Health check
+curl http://localhost:8000/health
+```
+
+### Diagnóstico
+
+```bash
+# Ver logs (si systemd)
+sudo journalctl -u bots-api -f
+
+# Ver logs de Nginx
+sudo tail -f /var/log/nginx/bots-api-access.log
+
+# Test de conectividad
+Test-NetConnection -ComputerName localhost -Port 8000  # Windows
+nc -zv localhost 8000  # Linux
+```
+
+### Mantenimiento
+
+```bash
+# Reindexar documentos
+curl -X POST http://localhost:8000/api/v1/bot-avanzado/reindexar
+
+# Ver estadísticas
+curl http://localhost:8000/api/v1/bot-avanzado/stats
+
+# Restart del servicio (producción)
+sudo systemctl restart bots-api
 ```
 
 ---
 
-## ⚙️ Configuración
+## 📊 Tiempos de Inicialización
 
-### 1. Crear archivo de configuración
+**Primera vez (esperado):**
+- Bot Simple: 5-15 segundos
+- Bot Avanzado: 10-30 segundos  
+- **Total: 15-45 segundos**
 
-Copia el archivo de ejemplo:
+El servidor carga:
+- ✅ Modelos de IA (Ollama/OpenAI)
+- ✅ ChromaDB persistente
+- ✅ Conexión con Paperless
+- ✅ Indexación de documentos (si es necesario)
 
-```powershell
-Copy-Item .env.example .env
+**Mensaje de éxito:**
 ```
-
-### 2. Editar `.env` con tus valores
-
-```env
-# ===== API de Recursos Humanos =====
-API_RH_URL=https://services.satechenergy.com/api/rh
-
-# ===== Paperless-ngx =====
-PAPERLESS_URL=https://tu-servidor-paperless.com
-PAPERLESS_TOKEN=tu_token_aqui
-
-# ===== Ollama (Modelo de IA Local) =====
-OLLAMA_URL=https://ollama.tech-energy.lat
-OLLAMA_MODEL=phi4-mini:latest
-
-# ===== OpenAI (Opcional) =====
-OPENAI_API_KEY=
-
-# ===== Base de Datos SQLite (Opcional) =====
-DATABASE_PATH=data/empresa.db
-```
-
-### 3. Obtener Token de Paperless (opcional)
-
-```powershell
-python scripts/generar_token_paperless.py
-```
-
-### 4. Verificar Conexiones
-
-```powershell
-# Probar API de RH
-python scripts/probar_api_rh.py
-
-# Probar Paperless
-python scripts/probar_paperless.py
+✅ API lista para recibir peticiones
+📚 Documentación: http://localhost:8000/docs
+INFO: Uvicorn running on http://0.0.0.0:8000
 ```
 
 ---
 
-## 🤖 Uso de los Bots
-
-### Bot General (RH + Paperless + IA)
-
-Consulta empleados y documentos en una sola interfaz:
-
-```powershell
-python bots/bot_general.py
-```
-
-**Ejemplos de consultas:**
-
-```
-🧑 Pregunta: ¿Cuántos empleados tenemos en Manufactura?
-🧑 Pregunta: Busca documentos sobre políticas de vacaciones
-🧑 Pregunta: ¿Quién es el jefe de Alan Rodríguez?
-🧑 Pregunta: Muéstrame contratos de 2025
-```
-
----
-
-### Bot de Recursos Humanos
-
-Especializado en consultas de personal:
-
-```powershell
-python bots/bot_rh.py
-```
-
-**Ejemplos de consultas:**
-
-```
-🧑 Pregunta: Busca a Juan Rodríguez
-🧑 Pregunta: ¿Cuántos empleados hay en IT?
-🧑 Pregunta: Lista del departamento de Soldadura
-🧑 
-
----
-
-### Bot de Documentos
-
-Búsqueda inteligente en documentos con análisis de contenido:
-
-```powershell
-python bots/bot_documentos.py
-```
-
-**Ejemplos de consultas:**
-
-```
-📝 Consulta: Busca documentos sobre contratos
-📝 Consulta: ¿Qué dice la política de vacaciones?
-📝 Consulta: Resume el documento sobre seguridad
-📝 Consulta: Lista documentos recientes
-📝 Consulta: Analiza documento 123
-```
-
-**Capacidades:**
-- 🔍 Búsqueda por texto completo (OCR)
-- 📖 Extracción de información específica
-- 📝 Resumen automático de documentos
-- 💬 Responde preguntas sobre el contenido
-- 🔗 Análisis de documentos por IDPregunta: Estadísticas por área
-```
-
----
-
-## 🛠️ Scripts de Utilidad
-
-### Verificar Modelos de Ollama
-
-```powershell
-python utils/verificar_ollama.py
-```
-
-Muestra todos los modelos disponibles en tu servidor Ollama.
-
-### Probar API de RH
-
-```powershell
-python scripts/probar_api_rh.py
-```
-
-Verifica conectividad y muestra estadísticas de empleados.
-
-### Probar Paperless
-
-```powershell
-python scripts/probar_paperless.py
-```
-
-Verifica conexión con Paperless y muestra documentos recientes.
-
-### Crear Base de Datos de Ejemplo
-
-```powershell
-python scripts/crear_db_ejemplo.py
-```
-
-Crea una base de datos SQLite con datos de prueba.
-
----
-
-## 💬 Ejemplos de Consultas
-
-### Consultas de RH
-
-| Pregunta | Tipo de Búsqueda |
-|----------|------------------|
-| ¿Cuántos empleados tenemos? | Total de empleados |
-| Busca a Alan Hernández | Por nombre |
-| Lista empleados de Manufactura | Por departamento |
-| ¿Quién trabaja en Servicios Técnicos? | Por área |
-| Estadísticas por departamento | Resumen |
-
-### Consultas de Documentos (Paperless)
-
-| Pregunta | Tipo de Búsqueda |
-|----------|------------------|
-| Busca contratos de 2025 | Por texto y fecha |
-| Encuentra la política de vacaciones | Por contenido |
-| ¿Tienes facturas pendientes? | Por estado |
-| Muéstrame reportes mensuales | Por categoría |
-
-### Consultas Mixtas (Bot General)
-
-| Pregunta | Fuentes |
-|----------|---------|
-| ¿Quién puede revisar este contrato? | RH + Paperless |
-| Busca información sobre el proyecto X | Ambas fuentes |
-| ¿A quién contacto sobre la póliza de seguros? | RH + Paperless |
-
----
-
-## 🔧 Personalización
-
-### Cambiar Modelo de IA
-
-Edita `.env`:
-
-```env
-# Modelo rápido (2.3 GB)
-OLLAMA_MODEL=phi4-mini:latest
-
-# Modelo potente (4.6 GB)
-OLLAMA_MODEL=llama3.1:latest
-```
-
-### Usar OpenAI en lugar de Ollama
-
-1. Obtén tu API Key en https://platform.openai.com
-2. Edita `.env`:
-
-```env
-OPENAI_API_KEY=tu_key_aqui
-```
-
-3. Modifica el bot para usar `ChatOpenAI` en lugar de `ChatOllama`
-
----
-
-## 🐛 Solución de Problemas
-
-### Error: "No se pudo cargar empleados"
-
-- Verifica que `API_RH_URL` en `.env` sea correcto
-- Ejecuta: `python scripts/probar_api_rh.py`
-
-### Error: "IA no disponible"
-
-- Verifica que el servidor Ollama esté activo
-- Confirma que el modelo esté instalado: `python utils/verificar_ollama.py`
-- Revisa `OLLAMA_URL` y `OLLAMA_MODEL` en `.env`
-
-### Error: "Paperless no responde"
-
-- Verifica `PAPERLESS_URL` en `.env`
-- Regenera el token: `python scripts/generar_token_paperless.py`
-- Prueba la conexión: `python scripts/probar_paperless.py`
-
-### Errores de dependencias
-
-```powershell
-# Reinstalar todas las dependencias
-pip install -r requirements.txt --force-reinstall
-```
-
----
-
-## 📚 Tecnologías Utilizadas
-
-- **[LangChain](https://python.langchain.com/)** - Framework para apps con IA
-- **[Ollama](https://ollama.com/)** - Modelos de IA locales
-- **[Paperless-ngx](https://docs.paperless-ngx.com/)** - Gestión de documentos
-- **[Python 3.13](https://www.python.org/)** - Lenguaje de programación
-- **[SQLite](https://www.sqlite.org/)** - Base de datos ligera
-
----
-
-## 📝 Notas Importantes
-
-1. **Seguridad**: El archivo `.env` está en `.gitignore` - nunca lo subas a Git
-2. **Tokens**: Genera tokens nuevos de Paperless regularmente
-3. **Modelos**: `phi4-mini` es más rápido, `llama3.1` es más preciso
-4. **Performance**: Respuestas con IA tardan 2-5 segundos
-
----
-
-## 🤝 Contribuciones
-
-Para reportar errores o sugerir mejoras, abre un issue en el repositorio.
+## 🔐 Seguridad (Producción)
+
+**Antes de producción, implementar:**
+
+1. ✅ **Autenticación** (JWT o API Keys)
+2. ✅ **Rate limiting** (slowapi)
+3. ✅ **CORS restrictivo** (solo dominios permitidos)
+4. ✅ **HTTPS obligatorio** (Let's Encrypt)
+5. ✅ **Validación robusta** (ya incluido con Pydantic)
+6. ✅ **Logs detallados**
+7. ✅ **Firewall** (UFW en Linux)
+8. ✅ **Monitoreo** (Prometheus + Grafana)
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto es de uso interno empresarial.
+Proyecto interno - GPT Services
 
 ---
 
-**¿Necesitas ayuda?** Revisa la sección de [Solución de Problemas](#solución-de-problemas) o ejecuta los scripts de verificación en la carpeta `scripts/`.
+## 💡 Tips
+
+- **Siempre activa el entorno virtual** antes de ejecutar comandos
+- **Espera pacientemente** la primera inicialización (30-45 seg)
+- **Revisa los logs** para entender qué está pasando
+- **Usa Swagger UI** para probar endpoints interactivamente
+- **El error 524 de Ollama es ignorable**, el servidor continúa
+- **ChromaDB se recrea automáticamente** si se elimina
+
+---
+
+## 🎯 Próximos Pasos
+
+1. ✅ **Ejecutar**: `python scripts/iniciar_api.py`
+2. ✅ **Validar**: `python scripts/test_api_cliente.py`
+3. ✅ **Explorar**: http://localhost:8000/docs
+4. 🚀 **Desplegar**: Configurar Nginx + systemd (ver arriba)
+5. 🔒 **Securizar**: Implementar autenticación y rate limiting
+
+---
+
+¡Tu API está lista para usar! 🎉
+
+**Documentación interactiva:** http://localhost:8000/docs
