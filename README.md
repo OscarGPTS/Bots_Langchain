@@ -15,13 +15,16 @@ API REST construida con **FastAPI** para consultas inteligentes de documentos us
 - [Cómo Ejecutar](#-cómo-ejecutar)
 - [Validar Funcionamiento](#-validar-funcionamiento)
 - [Ejemplos de Uso](#-ejemplos-de-uso)
-- [Despliegue en Producción](#-despliegue-en-producción-nginx)
+- [Despliegue en Producción](#-despliegue-en-producción)
+- [Guía Rápida de Despliegue en Producción](#-guía-rápida-de-despliegue-en-producción) ⭐
 - [Solución de Problemas](#-solución-de-problemas)
 - [Comandos Útiles](#️-comandos-útiles)
 
 ---
 
 ## 🚀 Inicio Rápido (5 minutos)
+
+### Desarrollo Local
 
 ```bash
 # 1. Activar entorno virtual
@@ -40,6 +43,8 @@ python scripts/iniciar_api.py
 # 5. Abrir documentación
 # http://localhost:8000/docs
 ```
+
+> 📋 **Para despliegue en producción (Ubuntu 24.04):** Ver la [Guía Rápida de Despliegue en Producción](#-guía-rápida-de-despliegue-en-producción) con configuración completa para Nginx, Cloudflare Tunnel y Systemd.
 
 **Acceder a:**
 
@@ -882,7 +887,7 @@ WantedBy=multi-user.target
 
 #### Ejemplo con Rutas Reales
 
-Para usuario `ubuntu` en `/home/ubuntu/langchain`:
+**Para usuario `ubuntu` en `/home/ubuntu/langchain`:**
 
 ```ini
 [Unit]
@@ -909,6 +914,54 @@ ExecStart=/home/ubuntu/langchain/.venv/bin/gunicorn api.main:app \
 
 Restart=always
 RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Para usuario `www-data` en `/home/www/Bots_Langchain` (bots.tech-energy.lat):**
+
+```ini
+[Unit]
+Description=Bots API - FastAPI con Uvicorn (tech-energy.lat)
+After=network.target
+Documentation=https://bots.tech-energy.lat/docs
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/home/www/Bots_Langchain
+
+# Variables de entorno
+Environment="PATH=/home/www/Bots_Langchain/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PYTHONPATH=/home/www/Bots_Langchain"
+EnvironmentFile=/home/www/Bots_Langchain/.env
+
+# Comando de inicio
+ExecStart=/home/www/Bots_Langchain/.venv/bin/gunicorn api.main:app \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 \
+    --access-logfile /var/log/bots-api/access.log \
+    --error-logfile /var/log/bots-api/error.log \
+    --log-level info \
+    --timeout 300 \
+    --graceful-timeout 300 \
+    --keep-alive 5
+
+# Reinicio automático
+Restart=always
+RestartSec=10
+StartLimitInterval=5min
+StartLimitBurst=10
+
+# Seguridad
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Límites de recursos
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
@@ -961,27 +1014,305 @@ systemctl is-active bots-api
 ps aux | grep gunicorn
 ```
 
-### 5. Cloudflare Tunnel (Opcional)
+### 5. Configuración de Cloudflare Tunnel/Zero Trust
 
-Si usas Cloudflare Tunnel en lugar de abrir puertos:
+La API usa **Cloudflare Tunnel** para exponerse a Internet de forma segura sin abrir puertos en el firewall.
+
+#### 5.1. Instalar cloudflared
 
 ```bash
-# Instalar cloudflared
+# Descargar cloudflared para Ubuntu/Debian
 curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
 sudo dpkg -i cloudflared.deb
 
-# Autenticar
+# Verificar instalación
+cloudflared --version
+
+# Limpiar archivo de instalación
+rm cloudflared.deb
+```
+
+#### 5.2. Autenticar con Cloudflare
+
+```bash
+# Autenticar (abre navegador para login)
 cloudflared tunnel login
 
-# Crear tunnel
+# Esto crea el archivo de credenciales en:
+# ~/.cloudflared/cert.pem
+```
+
+#### 5.3. Crear el Tunnel
+
+```bash
+# Crear tunnel con nombre
 cloudflared tunnel create bots-api
 
-# Configurar tunnel (ver config en dashboard de Cloudflare)
+# Esto genera:
+# 1. Un UUID único del tunnel
+# 2. Archivo de credenciales: ~/.cloudflared/<UUID>.json
+# 3. Registro en el dashboard de Cloudflare
+
+# Ver tunnels existentes
+cloudflared tunnel list
+
+# Ejemplo de salida:
+# ID                                   NAME      CREATED
+# 12345678-1234-1234-1234-123456789abc bots-api  2026-03-13T10:00:00Z
+```
+
+#### 5.4. Configurar DNS
+
+```bash
+# Asociar dominio al tunnel
 cloudflared tunnel route dns bots-api bots.tech-energy.lat
 
-# Ejecutar como servicio
-sudo cloudflared service install
-sudo systemctl start cloudflared
+# Verificar en Cloudflare Dashboard:
+# DNS > Records > Debería aparecer: bots.tech-energy.lat CNAME <UUID>.cfargotunnel.com
+```
+
+#### 5.5. Crear Archivo de Configuración
+
+Crear `/home/www/Bots_Langchain/.cloudflared/config.yml`:
+
+```bash
+# Crear directorio si no existe
+mkdir -p /home/www/Bots_Langchain/.cloudflared
+
+# Crear archivo de configuración
+sudo nano /home/www/Bots_Langchain/.cloudflared/config.yml
+```
+
+**Contenido de `config.yml`:**
+
+```yaml
+# Tunnel UUID (obtenerlo con: cloudflared tunnel list)
+tunnel: 12345678-1234-1234-1234-123456789abc
+
+# Archivo de credenciales del tunnel
+credentials-file: /home/www/.cloudflared/12345678-1234-1234-1234-123456789abc.json
+
+# Reglas de ingress
+ingress:
+  # Ruta 1: Todo el tráfico de bots.tech-energy.lat va a FastAPI local
+  - hostname: bots.tech-energy.lat
+    service: http://localhost:8000
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+      tlsTimeout: 30s
+      tcpKeepAlive: 30s
+      keepAliveTimeout: 90s
+      keepAliveConnections: 100
+  
+  # Ruta por defecto (obligatoria)
+  - service: http_status:404
+
+# Opciones de logging
+loglevel: info
+logfile: /var/log/cloudflared/cloudflared.log
+
+# Métricas (opcional)
+metrics: 0.0.0.0:2000
+```
+
+**Configuración Alternativa (con Nginx):**
+
+Si usas Nginx como reverse proxy:
+
+```yaml
+tunnel: 12345678-1234-1234-1234-123456789abc
+credentials-file: /home/www/.cloudflared/12345678-1234-1234-1234-123456789abc.json
+
+ingress:
+  - hostname: bots.tech-energy.lat
+    service: http://localhost:80  # Apunta a Nginx en puerto 80
+  
+  - service: http_status:404
+```
+
+#### 5.6. Mover Credenciales (Opcional)
+
+Por seguridad, puedes mover las credenciales al directorio del proyecto:
+
+```bash
+# Copiar credenciales
+sudo cp ~/.cloudflared/*.json /home/www/Bots_Langchain/.cloudflared/
+
+# Ajustar permisos
+sudo chown -R www-data:www-data /home/www/Bots_Langchain/.cloudflared
+sudo chmod 600 /home/www/Bots_Langchain/.cloudflared/*.json
+
+# Actualizar ruta en config.yml
+sudo nano /home/www/Bots_Langchain/.cloudflared/config.yml
+# credentials-file: /home/www/Bots_Langchain/.cloudflared/<UUID>.json
+```
+
+#### 5.7. Crear Servicio Systemd para Cloudflared
+
+Crear `/etc/systemd/system/cloudflared-tunnel.service`:
+
+```ini
+[Unit]
+Description=Cloudflare Tunnel for Bots API
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+ExecStart=/usr/local/bin/cloudflared tunnel --config /home/www/Bots_Langchain/.cloudflared/config.yml run
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cloudflared
+
+# Directorio de trabajo
+WorkingDirectory=/home/www/Bots_Langchain
+
+# Variables de entorno (opcional)
+Environment="TUNNEL_HOSTNAME=bots.tech-energy.lat"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### 5.8. Iniciar Cloudflared
+
+```bash
+# Crear directorio de logs
+sudo mkdir -p /var/log/cloudflared
+sudo chown www-data:www-data /var/log/cloudflared
+
+# Recargar systemd
+sudo systemctl daemon-reload
+
+# Iniciar servicio
+sudo systemctl start cloudflared-tunnel
+
+# Verificar estado
+sudo systemctl status cloudflared-tunnel
+
+# Ver logs
+sudo journalctl -u cloudflared-tunnel -f
+
+# Habilitar inicio automático
+sudo systemctl enable cloudflared-tunnel
+```
+
+#### 5.9. Verificar Funcionamiento
+
+```bash
+# 1. Verificar que cloudflared está corriendo
+sudo systemctl status cloudflared-tunnel
+
+# 2. Verificar conectividad del tunnel
+cloudflared tunnel info bots-api
+
+# 3. Test desde fuera del servidor
+curl https://bots.tech-energy.lat/health
+
+# 4. Ver métricas (si habilitaste metrics en config.yml)
+curl http://localhost:2000/metrics
+
+# 5. Ver logs
+sudo journalctl -u cloudflared-tunnel -n 50
+sudo tail -f /var/log/cloudflared/cloudflared.log
+```
+
+#### 5.10. Configurar Cloudflare Zero Trust (Autenticación)
+
+**En el Dashboard de Cloudflare:**
+
+1. **Ir a Zero Trust Dashboard:**
+   - https://one.dash.cloudflare.com/
+   - Selecciona tu account
+
+2. **Crear Access Policy:**
+   - Access > Applications > Add an application
+   - Nombre: `Bots API`
+   - Subdomain: `bots`
+   - Domain: `tech-energy.lat`
+
+3. **Configurar Políticas de Acceso:**
+   ```
+   Policy Name: Allow Team Members
+   Action: Allow
+   Include:
+     - Emails: admin@tech-energy.lat, dev@tech-energy.lat
+     - Email domain: tech-energy.lat
+   ```
+
+4. **Configurar Bypass para Endpoints Públicos:**
+   ```
+   Path: /health
+   Action: Bypass
+   
+   Path: /docs
+   Action: Allow (with authentication)
+   
+   Path: /api/*
+   Action: Allow (with authentication)
+   ```
+
+5. **Configurar CORS (opcional):**
+   - Settings > Network > CORS
+   - Allowed origins: `https://tech-energy.lat`
+
+#### 5.11. Troubleshooting Cloudflare
+
+**Tunnel no conecta:**
+```bash
+# Verificar credenciales
+cat ~/.cloudflared/cert.pem
+
+# Probar tunnel manualmente
+cloudflared tunnel --config /home/www/Bots_Langchain/.cloudflared/config.yml run
+
+# Verificar DNS
+dig bots.tech-energy.lat
+nslookup bots.tech-energy.lat
+```
+
+**Error 502 Bad Gateway:**
+```bash
+# Verificar que FastAPI está corriendo
+curl http://localhost:8000/health
+
+# Verificar servicio bots-api
+sudo systemctl status bots-api
+
+# Ver logs de cloudflared
+sudo journalctl -u cloudflared-tunnel -n 100
+```
+
+**Error de permisos:**
+```bash
+# Ajustar permisos del directorio
+sudo chown -R www-data:www-data /home/www/Bots_Langchain/.cloudflared
+sudo chmod 755 /home/www/Bots_Langchain/.cloudflared
+sudo chmod 600 /home/www/Bots_Langchain/.cloudflared/*.json
+sudo chmod 644 /home/www/Bots_Langchain/.cloudflared/config.yml
+```
+
+**Recrear tunnel desde cero:**
+```bash
+# Eliminar tunnel antiguo
+cloudflared tunnel delete bots-api
+
+# Crear nuevo
+cloudflared tunnel create bots-api-new
+
+# Actualizar DNS
+cloudflared tunnel route dns bots-api-new bots.tech-energy.lat
+
+# Actualizar config.yml con nuevo UUID
+sudo nano /home/www/Bots_Langchain/.cloudflared/config.yml
+
+# Reiniciar servicio
+sudo systemctl restart cloudflared-tunnel
 ```
 
 ### 6. Firewall
@@ -1544,7 +1875,381 @@ INFO: Uvicorn running on http://0.0.0.0:8000
 
 ---
 
-## 📄 Licencia
+## � Guía Rápida de Despliegue en Producción
+
+### Configuración Específica para bots.tech-energy.lat
+
+Esta es la configuración completa para el servidor Ubuntu 24.04 con la ruta `/home/www/Bots_Langchain`.
+
+#### 1. Preparar el Servidor Ubuntu
+
+```bash
+# Actualizar sistema
+sudo apt update && sudo apt upgrade -y
+
+# Instalar dependencias
+sudo apt install -y \
+    python3.12 python3.12-venv python3.12-dev \
+    python3-pip build-essential pkg-config \
+    libsqlite3-dev git curl nginx
+
+# Crear directorio del proyecto
+sudo mkdir -p /home/www
+cd /home/www
+
+# Clonar repositorio (ajustar URL)
+sudo git clone <tu-repo-url> Bots_Langchain
+cd Bots_Langchain
+
+# Ajustar permisos
+sudo chown -R www-data:www-data /home/www/Bots_Langchain
+```
+
+#### 2. Configurar Entorno Virtual
+
+```bash
+# Crear entorno virtual
+cd /home/www/Bots_Langchain
+sudo -u www-data python3.12 -m venv .venv
+
+# Activar venv
+sudo -u www-data bash -c "source .venv/bin/activate && pip install --upgrade pip setuptools wheel"
+
+# Instalar dependencias
+sudo -u www-data bash -c "source .venv/bin/activate && pip install -r requirements.txt"
+```
+
+#### 3. Configurar Variables de Entorno
+
+```bash
+# Crear archivo .env
+sudo nano /home/www/Bots_Langchain/.env
+```
+
+**Contenido del `.env`:**
+```env
+# Paperless-ngx
+PAPERLESS_URL=https://paperless.tech-energy.lat
+PAPERLESS_TOKEN=tu_token_aqui
+
+# Ollama (Local)
+OLLAMA_URL=https://ollama.tech-energy.lat
+OLLAMA_MODEL=phi4-mini:latest
+
+# OpenAI (Cloud)
+LOCALIA=false
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL_RAPIDO=gpt-4o-mini
+OPENAI_MODEL_RAZONAMIENTO=gpt-4o
+
+# ChromaDB
+CHROMA_DB_PATH=./chroma_db
+```
+
+```bash
+# Ajustar permisos del .env
+sudo chown www-data:www-data /home/www/Bots_Langchain/.env
+sudo chmod 600 /home/www/Bots_Langchain/.env
+```
+
+#### 4. Configurar Servicio Systemd
+
+```bash
+# Crear archivo de servicio
+sudo nano /etc/systemd/system/bots-api.service
+```
+
+**Copiar esta configuración exacta:**
+```ini
+[Unit]
+Description=Bots API - FastAPI con Uvicorn (tech-energy.lat)
+After=network.target
+Documentation=https://bots.tech-energy.lat/docs
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/home/www/Bots_Langchain
+
+Environment="PATH=/home/www/Bots_Langchain/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PYTHONPATH=/home/www/Bots_Langchain"
+EnvironmentFile=/home/www/Bots_Langchain/.env
+
+ExecStart=/home/www/Bots_Langchain/.venv/bin/gunicorn api.main:app \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 \
+    --access-logfile /var/log/bots-api/access.log \
+    --error-logfile /var/log/bots-api/error.log \
+    --log-level info \
+    --timeout 300 \
+    --graceful-timeout 300
+
+Restart=always
+RestartSec=10
+StartLimitInterval=5min
+StartLimitBurst=10
+
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# Crear directorio de logs
+sudo mkdir -p /var/log/bots-api
+sudo chown www-data:www-data /var/log/bots-api
+
+# Recargar systemd e iniciar
+sudo systemctl daemon-reload
+sudo systemctl start bots-api
+sudo systemctl enable bots-api
+
+# Verificar estado
+sudo systemctl status bots-api
+```
+
+#### 5. Configurar Nginx
+
+```bash
+# Crear configuración de Nginx
+sudo nano /etc/nginx/sites-available/bots-api
+```
+
+**Copiar esta configuración:**
+```nginx
+server {
+    listen 80;
+    server_name bots.tech-energy.lat;
+
+    # Logs
+    access_log /var/log/nginx/bots-api-access.log;
+    error_log /var/log/nginx/bots-api-error.log;
+
+    # Límite de request
+    client_max_body_size 50M;
+
+    # Headers de Cloudflare
+    real_ip_header CF-Connecting-IP;
+    set_real_ip_from 0.0.0.0/0;
+
+    # Proxy a FastAPI
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        
+        # Timeouts
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Health check (sin auth)
+    location /health {
+        proxy_pass http://127.0.0.1:8000/health;
+        access_log off;
+    }
+}
+```
+
+```bash
+# Activar sitio
+sudo ln -s /etc/nginx/sites-available/bots-api /etc/nginx/sites-enabled/
+
+# Verificar configuración
+sudo nginx -t
+
+# Recargar Nginx
+sudo systemctl reload nginx
+```
+
+#### 6. Configurar Cloudflare Tunnel
+
+```bash
+# Instalar cloudflared
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+sudo dpkg -i cloudflared.deb
+rm cloudflared.deb
+
+# Autenticar (abre navegador)
+cloudflared tunnel login
+
+# Crear tunnel
+cloudflared tunnel create bots-api
+
+# Obtener UUID del tunnel
+cloudflared tunnel list
+# Copiar el UUID que aparece (ej: 12345678-1234-1234-1234-123456789abc)
+
+# Configurar DNS
+cloudflared tunnel route dns bots-api bots.tech-energy.lat
+
+# Crear directorio de configuración
+sudo mkdir -p /home/www/Bots_Langchain/.cloudflared
+
+# Copiar credenciales
+sudo cp ~/.cloudflared/*.json /home/www/Bots_Langchain/.cloudflared/
+
+# Crear archivo de configuración
+sudo nano /home/www/Bots_Langchain/.cloudflared/config.yml
+```
+
+**Copiar esta configuración (reemplazar UUID):**
+```yaml
+tunnel: TU_UUID_AQUI
+credentials-file: /home/www/Bots_Langchain/.cloudflared/TU_UUID_AQUI.json
+
+ingress:
+  - hostname: bots.tech-energy.lat
+    service: http://localhost:8000
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+  
+  - service: http_status:404
+
+loglevel: info
+logfile: /var/log/cloudflared/cloudflared.log
+```
+
+```bash
+# Ajustar permisos
+sudo chown -R www-data:www-data /home/www/Bots_Langchain/.cloudflared
+sudo chmod 600 /home/www/Bots_Langchain/.cloudflared/*.json
+
+# Crear directorio de logs
+sudo mkdir -p /var/log/cloudflared
+sudo chown www-data:www-data /var/log/cloudflared
+
+# Crear servicio systemd
+sudo nano /etc/systemd/system/cloudflared-tunnel.service
+```
+
+**Copiar esta configuración:**
+```ini
+[Unit]
+Description=Cloudflare Tunnel for Bots API
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+ExecStart=/usr/local/bin/cloudflared tunnel --config /home/www/Bots_Langchain/.cloudflared/config.yml run
+Restart=always
+RestartSec=5
+WorkingDirectory=/home/www/Bots_Langchain
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# Activar servicio
+sudo systemctl daemon-reload
+sudo systemctl start cloudflared-tunnel
+sudo systemctl enable cloudflared-tunnel
+
+# Verificar estado
+sudo systemctl status cloudflared-tunnel
+```
+
+#### 7. Verificar Instalación
+
+```bash
+# 1. Verificar que FastAPI está corriendo
+sudo systemctl status bots-api
+curl http://localhost:8000/health
+
+# 2. Verificar Cloudflare Tunnel
+sudo systemctl status cloudflared-tunnel
+cloudflared tunnel info bots-api
+
+# 3. Test desde internet
+curl https://bots.tech-energy.lat/health
+
+# 4. Ver documentación
+# Abrir en navegador: https://bots.tech-energy.lat/docs
+
+# 5. Ver logs
+sudo journalctl -u bots-api -f
+sudo journalctl -u cloudflared-tunnel -f
+```
+
+#### 8. Comandos para Actualizar
+
+```bash
+# Ir al directorio
+cd /home/www/Bots_Langchain
+
+# Pull de cambios
+sudo -u www-data git pull origin main
+
+# Actualizar dependencias si es necesario
+sudo -u www-data bash -c "source .venv/bin/activate && pip install -r requirements.txt"
+
+# Reiniciar servicio
+sudo systemctl restart bots-api
+
+# Verificar que funciona
+curl http://localhost:8000/health
+sudo journalctl -u bots-api -n 50
+```
+
+#### Estructura de Directorios Final
+
+```
+/home/www/Bots_Langchain/
+├── .env                          # Variables de entorno
+├── .venv/                        # Entorno virtual Python
+├── .cloudflared/                 # Configuración de Cloudflare
+│   ├── config.yml
+│   └── <UUID>.json
+├── api/                          # Código de la API
+├── bots/                         # Lógica de los bots
+├── chroma_db/                    # Base de datos vectorial
+├── requirements.txt              # Dependencias
+└── scripts/                      # Scripts de utilidad
+
+/etc/systemd/system/
+├── bots-api.service              # Servicio FastAPI
+└── cloudflared-tunnel.service    # Servicio Cloudflare
+
+/var/log/
+├── bots-api/                     # Logs de FastAPI
+│   ├── access.log
+│   └── error.log
+├── cloudflared/                  # Logs de Cloudflare
+│   └── cloudflared.log
+└── nginx/                        # Logs de Nginx
+    ├── bots-api-access.log
+    └── bots-api-error.log
+```
+
+#### URLs de Producción
+
+- **API**: https://bots.tech-energy.lat
+- **Docs (Swagger)**: https://bots.tech-energy.lat/docs
+- **ReDoc**: https://bots.tech-energy.lat/redoc
+- **Health**: https://bots.tech-energy.lat/health
+
+---
+
+## �📄 Licencia
 
 Proyecto interno - GPT Services
 
