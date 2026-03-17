@@ -65,21 +65,6 @@ async def razonamiento_profundo(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-            request.pregunta,
-            request.filtros,
-            request.k
-        )
-        
-        tiempo_respuesta = time.time() - start_time
-        
-        return QueryAvanzadaResponse(
-            respuesta=respuesta,
-            estadisticas=stats,
-            tiempo_respuesta=round(tiempo_respuesta, 2)
-        )
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/busqueda-semantica", response_model=BusquedaSemanticaResponse, summary="Búsqueda semántica")
