@@ -757,6 +757,10 @@ La API está protegida con **Cloudflare Zero Trust** que gestiona:
 
 **Dominio de producción:** `https://bots.tech-energy.lat`
 
+> ⚠️ **Nota sobre puertos:** Si el puerto `8000` está ocupado por otra aplicación, puedes usar `8001` u otro puerto. Solo asegúrate de:
+> 1. Cambiar `--bind 127.0.0.1:PUERTO` en Gunicorn/systemd
+> 2. Cambiar `proxy_pass http://127.0.0.1:PUERTO` en Nginx
+
 ### 1. Configuración de Nginx
 
 Crear `/etc/nginx/sites-available/bots-api`:
@@ -777,7 +781,7 @@ server {
     real_ip_header CF-Connecting-IP;
     set_real_ip_from 0.0.0.0/0;
 
-    # Proxy a FastAPI
+    # Proxy a FastAPI (cambiar a 8001 si el puerto 8000 está ocupado)
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
@@ -799,10 +803,21 @@ server {
 
     # Health check endpoint (sin autenticación)
     location /health {
-        proxy_pass http://127.0.0.1:8000/health;
+        proxy_pass http://127.0.0.1:8000/health;  # Cambiar a 8001 si usas ese puerto
         access_log off;
     }
 }
+```
+
+**Si usas puerto 8001** (porque 8000 está ocupado), cambia las líneas:
+```nginx
+# De:
+proxy_pass http://127.0.0.1:8000;
+proxy_pass http://127.0.0.1:8000/health;
+
+# A:
+proxy_pass http://127.0.0.1:8001;
+proxy_pass http://127.0.0.1:8001/health;
 ```
 
 ### 2. Activar Sitio
@@ -2013,6 +2028,24 @@ sudo systemctl enable bots-api
 sudo systemctl status bots-api
 ```
 
+> ⚠️ **Si el puerto 8000 está ocupado:** Edita el archivo systemd y cambia `--bind 127.0.0.1:8001` (también actualiza Nginx más abajo)
+
+```bash
+# Para usar puerto 8001, edita el systemd:
+sudo nano /etc/systemd/system/bots-api.service
+
+# Cambia la línea ExecStart:
+ExecStart=/home/www/Bots_Langchain/.venv/bin/gunicorn api.main:app \
+    -w 4 \
+    -k uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8001 \
+    --timeout 300
+
+# Luego recarga:
+sudo systemctl daemon-reload
+sudo systemctl restart bots-api
+```
+
 #### 5. Configurar Nginx
 
 ```bash
@@ -2020,7 +2053,7 @@ sudo systemctl status bots-api
 sudo nano /etc/nginx/sites-available/bots-api
 ```
 
-**Copiar esta configuración:**
+**Copiar esta configuración** (usa puerto 8000 o 8001 según tu caso):
 ```nginx
 server {
     listen 80;
@@ -2037,9 +2070,9 @@ server {
     real_ip_header CF-Connecting-IP;
     set_real_ip_from 0.0.0.0/0;
 
-    # Proxy a FastAPI
+    # Proxy a FastAPI (¡IMPORTANTE! Usa el mismo puerto que en systemd: 8000 o 8001)
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8000;  # Cambiar a 8001 si usas ese puerto
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -2059,9 +2092,23 @@ server {
 
     # Health check (sin auth)
     location /health {
-        proxy_pass http://127.0.0.1:8000/health;
+        proxy_pass http://127.0.0.1:8000/health;  # Cambiar a 8001 si usas ese puerto
         access_log off;
     }
+}
+```
+
+**Ejemplo para puerto 8001:**
+```nginx
+# Si el puerto 8000 está ocupado, usa 8001:
+location / {
+    proxy_pass http://127.0.0.1:8001;
+    # ... resto de headers igual
+}
+
+location /health {
+    proxy_pass http://127.0.0.1:8001/health;
+    access_log off;
 }
 ```
 
