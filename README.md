@@ -2,6 +2,13 @@
 
 API REST construida con **FastAPI** para consultas inteligentes de documentos usando **LangChain**, **ChromaDB**, **OpenAI** y **Ollama**.
 
+> ✅ **CONFIGURACIÓN EN PRODUCCIÓN (bots.tech-energy.lat):**
+> - **Systemd Service:** `/etc/systemd/system/bots.service` (no `bots-api.service`)
+> - **Puerto:** `8001` (evita conflicto con otras apps en puerto 8000)
+> - **Nginx:** `/etc/nginx/sites-available/bots.conf`
+> - **Usuario:** `tech-energy` con grupo `www-data`
+> - Ver [Configuración Real en Producción](#✅-configuración-real-en-producción-botstech-energylat) para detalles exactos
+
 ---
 
 ## 📋 Tabla de Contenidos
@@ -757,70 +764,67 @@ La API está protegida con **Cloudflare Zero Trust** que gestiona:
 
 **Dominio de producción:** `https://bots.tech-energy.lat`
 
-> ⚠️ **Nota sobre puertos:** Si el puerto `8000` está ocupado por otra aplicación, puedes usar `8001` u otro puerto. Solo asegúrate de:
-> 1. Cambiar `--bind 127.0.0.1:PUERTO` en Gunicorn/systemd
-> 2. Cambiar `proxy_pass http://127.0.0.1:PUERTO` en Nginx
-
 ### 1. Configuración de Nginx
 
-Crear `/etc/nginx/sites-available/bots-api`:
+✅ **Configuración real en producción:**
+
+Archivo: `/etc/nginx/sites-available/bots.conf`
 
 ```nginx
 server {
     listen 80;
     server_name bots.tech-energy.lat;
 
-    # Logs
     access_log /var/log/nginx/bots-api-access.log;
     error_log /var/log/nginx/bots-api-error.log;
 
-    # Límite de request
     client_max_body_size 50M;
 
-    # Headers de Cloudflare
     real_ip_header CF-Connecting-IP;
     set_real_ip_from 0.0.0.0/0;
 
-    # Proxy a FastAPI (cambiar a 8001 si el puerto 8000 está ocupado)
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
         
-        # Timeouts para consultas largas (razonamiento con IA)
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
         
-        # WebSocket support
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
 
-    # Health check endpoint (sin autenticación)
     location /health {
-        proxy_pass http://127.0.0.1:8000/health;  # Cambiar a 8001 si usas ese puerto
+        proxy_pass http://127.0.0.1:8001/health;
         access_log off;
     }
 }
 ```
 
-**Si usas puerto 8001** (porque 8000 está ocupado), cambia las líneas:
-```nginx
-# De:
-proxy_pass http://127.0.0.1:8000;
-proxy_pass http://127.0.0.1:8000/health;
-
-# A:
-proxy_pass http://127.0.0.1:8001;
-proxy_pass http://127.0.0.1:8001/health;
-```
+**Características:**
+- Puerto `8001` para evitar conflicto con puerto 8000
+- Timeouts de 300s para procesamiento IA
+- WebSockets habilitados
+- Headers de Cloudflare configurados
 
 ### 2. Activar Sitio
+
+```bash
+# Activar configuración
+sudo ln -s /etc/nginx/sites-available/bots.conf /etc/nginx/sites-enabled/
+
+# Probar configuración
+sudo nginx -t
+
+# Recargar Nginx
+sudo systemctl reload nginx
+```
 
 ```bash
 # Crear symlink
@@ -934,53 +938,37 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-**Para usuario `www-data` en `/home/www/Bots_Langchain` (bots.tech-energy.lat):**
+**✅ CONFIGURACIÓN REAL EN PRODUCCIÓN (bots.tech-energy.lat):**
+
+Archivo: `/etc/systemd/system/bots.service`
 
 ```ini
 [Unit]
-Description=Bots API - FastAPI con Uvicorn (tech-energy.lat)
+Description=Gunicorn FastAPI para Bots Langchain
 After=network.target
-Documentation=https://bots.tech-energy.lat/docs
 
 [Service]
-Type=notify
-User=www-data
+User=tech-energy
 Group=www-data
 WorkingDirectory=/home/www/Bots_Langchain
-
-# Variables de entorno
-Environment="PATH=/home/www/Bots_Langchain/.venv/bin:/usr/local/bin:/usr/bin"
 Environment="PYTHONPATH=/home/www/Bots_Langchain"
-EnvironmentFile=/home/www/Bots_Langchain/.env
-
-# Comando de inicio
-ExecStart=/home/www/Bots_Langchain/.venv/bin/gunicorn api.main:app \
-    --workers 4 \
-    --worker-class uvicorn.workers.UvicornWorker \
-    --bind 127.0.0.1:8000 \
-    --access-logfile /var/log/bots-api/access.log \
-    --error-logfile /var/log/bots-api/error.log \
-    --log-level info \
-    --timeout 300 \
-    --graceful-timeout 300 \
-    --keep-alive 5
-
-# Reinicio automático
-Restart=always
-RestartSec=10
-StartLimitInterval=5min
-StartLimitBurst=10
-
-# Seguridad
-NoNewPrivileges=true
-PrivateTmp=true
-
-# Límites de recursos
-LimitNOFILE=65536
+Environment="PATH=/home/www/Bots_Langchain/.venv/bin"
+ExecStart=/home/www/Bots_Langchain/.venv/bin/gunicorn \
+    -w 4 \
+    -k uvicorn.workers.UvicornWorker \
+    api.main:app \
+    --bind 127.0.0.1:8001 \
+    --timeout 300
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+**Características clave:**
+- Usuario: `tech-energy` con grupo `www-data`
+- Puerto: `8001` (evita conflicto con otras apps en 8000)
+- Timeout: `300s` para operaciones largas de IA
+- Workers: `4` (ajustar según CPU disponibles)
 
 ### 4. Iniciar Servicio
 
@@ -988,35 +976,35 @@ WantedBy=multi-user.target
 # Recargar systemd
 sudo systemctl daemon-reload
 
-# Verificar sintaxis del servicio
-sudo systemd-analyze verify /etc/systemd/system/bots-api.service
-
 # Iniciar servicio
-sudo systemctl start bots-api
+sudo systemctl start bots
 
 # Verificar estado
-sudo systemctl status bots-api
-
-# Ver logs en tiempo real
-sudo journalctl -u bots-api -f
+sudo systemctl status bots
 
 # Habilitar inicio automático
-sudo systemctl enable bots-api
+sudo systemctl enable bots
 
-# Reiniciar servicio (si haces cambios)
-sudo systemctl restart bots-api
+# Ver logs en tiempo real
+sudo journalctl -u bots -f
+
+# Reiniciar tras cambios en código
+sudo systemctl restart bots
 ```
 
 #### Comandos Útiles de Systemd
 
 ```bash
 # Ver logs del servicio
-sudo journalctl -u bots-api -n 50            # Últimas 50 líneas
-sudo journalctl -u bots-api --since today    # Logs de hoy
-sudo journalctl -u bots-api --since "10 minutes ago"
+sudo journalctl -u bots -n 50
+sudo journalctl -u bots --since today
+sudo journalctl -u bots --since "10 minutes ago"
 
-# Detener servicio
-sudo systemctl stop bots-api
+# Probar configuración Nginx
+sudo nginx -t && sudo systemctl reload nginx
+
+# Ver si el puerto está activo
+sudo lsof -i :8001
 
 # Recargar configuración si editas el .service
 sudo systemctl daemon-reload
@@ -2028,11 +2016,11 @@ sudo systemctl enable bots-api
 sudo systemctl status bots-api
 ```
 
-> ⚠️ **Si el puerto 8000 está ocupado:** Edita el archivo systemd y cambia `--bind 127.0.0.1:8001` (también actualiza Nginx más abajo)
+> ⚠️ **Si el puerto 8000 está ocupado:** Edita el archivo systemd y cambia `--bind 127.0.0.1:8001` (también actualiza Nginx)
 
 ```bash
 # Para usar puerto 8001, edita el systemd:
-sudo nano /etc/systemd/system/bots-api.service
+sudo nano /etc/systemd/system/bots.service
 
 # Cambia la línea ExecStart:
 ExecStart=/home/www/Bots_Langchain/.venv/bin/gunicorn api.main:app \
@@ -2043,78 +2031,58 @@ ExecStart=/home/www/Bots_Langchain/.venv/bin/gunicorn api.main:app \
 
 # Luego recarga:
 sudo systemctl daemon-reload
-sudo systemctl restart bots-api
+sudo systemctl restart bots
 ```
 
 #### 5. Configurar Nginx
 
+✅ **Configuración real en producción:**
+
 ```bash
-# Crear configuración de Nginx
-sudo nano /etc/nginx/sites-available/bots-api
+sudo nano /etc/nginx/sites-available/bots.conf
 ```
 
-**Copiar esta configuración** (usa puerto 8000 o 8001 según tu caso):
+**Contenido del archivo:**
 ```nginx
 server {
     listen 80;
     server_name bots.tech-energy.lat;
 
-    # Logs
     access_log /var/log/nginx/bots-api-access.log;
     error_log /var/log/nginx/bots-api-error.log;
 
-    # Límite de request
     client_max_body_size 50M;
 
-    # Headers de Cloudflare
     real_ip_header CF-Connecting-IP;
     set_real_ip_from 0.0.0.0/0;
 
-    # Proxy a FastAPI (¡IMPORTANTE! Usa el mismo puerto que en systemd: 8000 o 8001)
     location / {
-        proxy_pass http://127.0.0.1:8000;  # Cambiar a 8001 si usas ese puerto
+        proxy_pass http://127.0.0.1:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
         
-        # Timeouts
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
         
-        # WebSocket support
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
 
-    # Health check (sin auth)
     location /health {
-        proxy_pass http://127.0.0.1:8000/health;  # Cambiar a 8001 si usas ese puerto
+        proxy_pass http://127.0.0.1:8001/health;
         access_log off;
     }
 }
 ```
 
-**Ejemplo para puerto 8001:**
-```nginx
-# Si el puerto 8000 está ocupado, usa 8001:
-location / {
-    proxy_pass http://127.0.0.1:8001;
-    # ... resto de headers igual
-}
-
-location /health {
-    proxy_pass http://127.0.0.1:8001/health;
-    access_log off;
-}
-```
-
 ```bash
 # Activar sitio
-sudo ln -s /etc/nginx/sites-available/bots-api /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/bots.conf /etc/nginx/sites-enabled/
 
 # Verificar configuración
 sudo nginx -t
@@ -2219,12 +2187,12 @@ sudo systemctl status cloudflared-tunnel
 
 ```bash
 # 1. Verificar que FastAPI está corriendo
-sudo systemctl status bots-api
-curl http://localhost:8000/health
+sudo systemctl status bots
+curl http://localhost:8001/health
 
 # 2. Verificar Cloudflare Tunnel
 sudo systemctl status cloudflared-tunnel
-cloudflared tunnel info bots-api
+cloudflared tunnel info <tunnel-id>
 
 # 3. Test desde internet
 curl https://bots.tech-energy.lat/health
@@ -2233,7 +2201,7 @@ curl https://bots.tech-energy.lat/health
 # Abrir en navegador: https://bots.tech-energy.lat/docs
 
 # 5. Ver logs
-sudo journalctl -u bots-api -f
+sudo journalctl -u bots -f
 sudo journalctl -u cloudflared-tunnel -f
 ```
 
@@ -2244,17 +2212,17 @@ sudo journalctl -u cloudflared-tunnel -f
 cd /home/www/Bots_Langchain
 
 # Pull de cambios
-sudo -u www-data git pull origin main
+sudo -u tech-energy git pull origin main
 
 # Actualizar dependencias si es necesario
-sudo -u www-data bash -c "source .venv/bin/activate && pip install -r requirements.txt"
+sudo -u  tech-energy bash -c "source .venv/bin/activate && pip install -r requirements.txt"
 
 # Reiniciar servicio
-sudo systemctl restart bots-api
+sudo systemctl restart bots
 
 # Verificar que funciona
-curl http://localhost:8000/health
-sudo journalctl -u bots-api -n 50
+curl http://localhost:8001/health
+sudo journalctl -u bots -n 50
 ```
 
 #### Estructura de Directorios Final

@@ -23,19 +23,10 @@ async def query(
     request: QueryRequest,
     bot: BotDocumentos = Depends(get_bot_simple)
 ):
-    """
-    Realizar una consulta general al bot simple.
-    
-    - **pregunta**: Pregunta o consulta del usuario
-    
-    El bot buscará documentos relevantes y generará una respuesta usando IA.
-    Si ChromaDB está disponible, usará búsqueda semántica (más eficiente).
-    """
+    """Realizar consulta general con búsqueda semántica y generación de respuesta con IA."""
     try:
         start_time = time.time()
-        
         respuesta = bot.procesar(request.pregunta)
-        
         tiempo_respuesta = time.time() - start_time
         
         return QueryResponse(
@@ -52,22 +43,10 @@ async def analyze_document(
     request: AnalyzeDocumentRequest,
     bot: BotDocumentos = Depends(get_bot_simple)
 ):
-    """
-    Analizar un documento específico por su ID de Paperless.
-    
-    - **documento_id**: ID del documento en Paperless
-    - **pregunta** (opcional): Pregunta específica sobre el documento
-    
-    Si no se proporciona pregunta, genera un resumen ejecutivo.
-    """
+    """Analizar documento por ID. Si no se proporciona pregunta, genera resumen ejecutivo."""
     try:
         start_time = time.time()
-        
-        respuesta = bot.analizar_documento(
-            request.documento_id,
-            request.pregunta or ""
-        )
-        
+        respuesta = bot.analizar_documento(request.documento_id, request.pregunta or "")
         tiempo_respuesta = time.time() - start_time
         
         return QueryResponse(
@@ -84,26 +63,11 @@ async def list_documents(
     limite: int = 100,
     bot: BotDocumentos = Depends(get_bot_simple)
 ):
-    """
-    Obtener lista completa de documentos de Paperless.
-    
-    - **limite**: Número máximo de documentos a devolver (default: 100)
-    
-    Devuelve JSON estandarizado con:
-    - id: ID del documento en Paperless
-    - title: Título del documento
-    - created: Fecha de creación
-    - modified: Fecha de modificación
-    - tags: Lista de IDs de tags
-    - document_type: ID del tipo de documento
-    """
+    """Obtener lista de documentos de Paperless con formato JSON estandarizado."""
     try:
         start_time = time.time()
-        
-        # Obtener documentos de Paperless
         documentos_raw = bot.buscar_documentos("", max_resultados=limite)
         
-        # Convertir a formato estandarizado
         documentos = [
             DocumentoPaperless(
                 id=doc.get("id"),
@@ -184,28 +148,15 @@ async def recent_documents(
 async def health(
     bot: BotDocumentos = Depends(get_bot_simple)
 ):
-    """
-    Verificar el estado del bot simple.
-    
-    Devuelve:
-    - Estado del servicio
-    - Disponibilidad de IA (Ollama)
-    - Disponibilidad de ChromaDB
-    - Conexión con Paperless
-    - Total de documentos indexados
-    """
+    """Verificar estado del bot simple y componentes."""
     try:
-        # Verificar estado de componentes
         ia_disponible = bot.llm is not None
         chromadb_disponible = bot.vector_store is not None
-        
-        # Contar documentos indexados
         total_docs = len(bot.documentos_indexados)
         
-        # Intentar conectar con Paperless
         paperless_conectado = False
         try:
-            docs = bot.buscar_documentos("", max_resultados=1)
+            bot.buscar_documentos("", max_resultados=1)
             paperless_conectado = True
         except:
             pass

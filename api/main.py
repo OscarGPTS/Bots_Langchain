@@ -9,38 +9,28 @@ from api.routes import bot_simple_router, bot_avanzado_router
 from api.dependencies import get_bot_simple, get_bot_avanzado
 
 
-# Lifespan para inicializar bots al arrancar
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicializar recursos al arrancar y limpiar al cerrar"""
-    # Startup
-    print("\n" + "="*70)
-    print("🚀 Iniciando API de Bots de Documentos")
-    print("="*70)
+    print("[INFO] Iniciando API de Bots de Documentos")
     
-    # Pre-cargar bots (opcional, para startup más rápido)
-    print("\n📦 Pre-cargando bots...")
     try:
         get_bot_simple()
-        print("✅ Bot Simple inicializado")
+        print("[INFO] Bot Simple inicializado")
     except Exception as e:
-        print(f"⚠️ Error al inicializar Bot Simple: {e}")
+        print(f"[ERROR] Error al inicializar Bot Simple: {e}")
     
     try:
         get_bot_avanzado()
-        print("✅ Bot Avanzado inicializado")
+        print("[INFO] Bot Avanzado inicializado")
     except Exception as e:
-        print(f"⚠️ Error al inicializar Bot Avanzado: {e}")
+        print(f"[ERROR] Error al inicializar Bot Avanzado: {e}")
     
-    print("\n" + "="*70)
-    print("✅ API lista para recibir peticiones")
-    print("📚 Documentación: http://localhost:8000/docs")
-    print("="*70 + "\n")
+    print("[INFO] API lista")
     
     yield
     
-    # Shutdown
-    print("\n👋 Cerrando API...")
+    print("[INFO] Cerrando API")
 
 
 # Crear aplicación FastAPI
@@ -75,22 +65,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Middleware para logging de requests
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Logging de todas las peticiones"""
+    """Logging de peticiones"""
     start_time = time.time()
-    
-    # Procesar request
     response = await call_next(request)
-    
-    # Calcular tiempo
     process_time = time.time() - start_time
     
-    # Log
-    print(f"📥 {request.method} {request.url.path} - {response.status_code} - {process_time:.2f}s")
-    
-    # Agregar header con tiempo de procesamiento
+    print(f"[REQ] {request.method} {request.url.path} - {response.status_code} - {process_time:.2f}s")
     response.headers["X-Process-Time"] = str(process_time)
     
     return response
@@ -101,10 +83,8 @@ app.include_router(bot_simple_router)
 app.include_router(bot_avanzado_router)
 
 
-# Ruta raíz
 @app.get("/", tags=["General"])
 async def root():
-    """Información básica de la API"""
     return {
         "nombre": "API Bots de Documentos",
         "version": "1.0.0",
@@ -117,24 +97,16 @@ async def root():
     }
 
 
-# Health check global
 @app.get("/health", tags=["General"])
 async def health_check():
-    """Health check global de la API"""
     return {
         "status": "healthy",
-        "timestamp": time.time(),
-        "services": {
-            "bot_simple": "/api/v1/bot-simple/health",
-            "bot_avanzado": "/api/v1/bot-avanzado/health"
-        }
+        "timestamp": time.time()
     }
 
 
-# Manejador de errores global
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Manejador global de excepciones"""
     return JSONResponse(
         status_code=500,
         content={
@@ -147,12 +119,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     import uvicorn
-    
-    # Ejecutar servidor
     uvicorn.run(
         "api.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,  # Auto-reload en desarrollo
+        reload=True,
         log_level="info"
     )

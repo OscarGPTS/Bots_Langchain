@@ -26,25 +26,10 @@ async def consulta_rapida(
     request: QueryAvanzadaRequest,
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
-    """
-    Consulta rápida con el bot avanzado.
-    
-    - **pregunta**: Consulta del usuario
-    - **filtros** (opcional): Filtros de metadata (ej: {"tags": "contrato"})
-    
-    Usa:
-    - Solo 3 chunks más relevantes
-    - Modelo rápido (gpt-4o-mini o Ollama)
-    - Ideal para consultas simples y directas
-    """
+    """Consulta rápida con 3 chunks y modelo rápido. Ideal para consultas simples."""
     try:
         start_time = time.time()
-        
-        respuesta, stats = bot.consulta_rapida(
-            request.pregunta,
-            request.filtros
-        )
-        
+        respuesta, stats = bot.consulta_rapida(request.pregunta, request.filtros)
         tiempo_respuesta = time.time() - start_time
         
         return QueryAvanzadaResponse(
@@ -62,22 +47,24 @@ async def razonamiento_profundo(
     request: RazonamientoRequest,
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
-    """
-    Análisis profundo con razonamiento complejo.
-    
-    - **pregunta**: Pregunta compleja que requiere análisis
-    - **filtros** (opcional): Filtros de metadata
-    - **k**: Número de chunks a analizar (1-20, default: 10)
-    
-    Usa:
-    - Hasta 20 chunks para análisis profundo
-    - Modelo con razonamiento (gpt-4o o Ollama)
-    - Ideal para análisis complejos, comparaciones, tendencias
-    """
+    """Análisis profundo con hasta 20 chunks. Ideal para preguntas complejas y comparaciones."""
     try:
         start_time = time.time()
-        
         respuesta, stats = bot.razonamiento_profundo(
+            request.pregunta,
+            request.filtros,
+            request.k
+        )
+        tiempo_respuesta = time.time() - start_time
+        
+        return QueryAvanzadaResponse(
+            respuesta=respuesta,
+            estadisticas=stats,
+            tiempo_respuesta=round(tiempo_respuesta, 2)
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
             request.pregunta,
             request.filtros,
             request.k
@@ -100,38 +87,23 @@ async def busqueda_semantica(
     request: BusquedaSemanticaRequest,
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
-    """
-    Búsqueda semántica en la base de vectores.
-    
-    - **query**: Texto de búsqueda
-    - **k**: Número de resultados (1-20, default: 5)
-    - **filtros** (opcional): Filtros de metadata
-    
-    Devuelve los chunks más similares semánticamente sin generar respuesta.
-    Útil para exploración y verificación.
-    """
+    """Búsqueda semántica sin generación de respuesta. Devuelve chunks más similares."""
     try:
         start_time = time.time()
-        
-        resultados = bot.buscar_semantica(
-            request.query,
-            request.k,
-            request.filtros
-        )
-        
+        resultados = bot.buscar_semantica(request.query, request.k, request.filtros)
         tiempo_respuesta = time.time() - start_time
         
-        # Convertir documentos a formato response
-        docs_info = []
-        for doc in resultados:
-            docs_info.append(DocumentoInfo(
+        docs_info = [
+            DocumentoInfo(
                 doc_id=doc.metadata.get('doc_id', ''),
                 title=doc.metadata.get('title', ''),
                 chunk_index=doc.metadata.get('chunk_index', 0),
                 total_chunks=doc.metadata.get('total_chunks', 0),
                 created=doc.metadata.get('created', '')[:10],
                 preview=doc.page_content[:200]
-            ))
+            )
+            for doc in resultados
+        ]
         
         return BusquedaSemanticaResponse(
             resultados=docs_info,
