@@ -402,19 +402,18 @@ Respuesta directa:"""
                         "costo_usd": cb.total_cost
                     }
                     
+                    # Log de estadísticas (no mostrar al usuario)
+                    print(f"💰 Estadísticas de uso:")
+                    print(f"   📥 Tokens entrada: {stats['tokens_entrada']}")
+                    print(f"   📤 Tokens salida: {stats['tokens_salida']}")
+                    print(f"   💵 Costo estimado: ${stats['costo_usd']:.6f} USD")
+                    
                     # Incluir información de documentos fuente
                     respuesta += "\n\n" + "─"*60
                     respuesta += "\n📚 Documentos consultados:\n"
                     for doc in chunks:
                         respuesta += f"\n📄 {doc.metadata.get('title')}"
                         respuesta += f" (Creado: {doc.metadata.get('created', 'N/A')[:10]})"
-                    
-                    # Mostrar estadísticas
-                    respuesta += "\n\n" + "─"*60
-                    respuesta += "\n💰 Estadísticas de uso:"
-                    respuesta += f"\n   📥 Tokens entrada: {stats['tokens_entrada']}"
-                    respuesta += f"\n   📤 Tokens salida: {stats['tokens_salida']}"
-                    respuesta += f"\n   💵 Costo estimado: ${stats['costo_usd']:.6f} USD"
                     
                     return respuesta, stats
             
@@ -525,20 +524,19 @@ Análisis:"""
                         "costo_usd": cb.total_cost
                     }
                     
+                    # Log de estadísticas (no mostrar al usuario)
+                    print(f"💰 Estadísticas de uso (con razonamiento):")
+                    print(f"   📥 Tokens entrada: {stats['tokens_entrada']}")
+                    print(f"   📤 Tokens salida: {stats['tokens_salida']}")
+                    print(f"   🧠 Tokens razonamiento: incluidos en entrada")
+                    print(f"   💵 Costo estimado: ${stats['costo_usd']:.6f} USD")
+                    
                     # Incluir información de documentos fuente
                     respuesta += "\n\n" + "─"*60
                     respuesta += "\n📚 Documentos analizados:\n"
                     for doc_id, data in docs_unicos.items():
                         respuesta += f"\n📄 {data['title']}"
                         respuesta += f" ({len(data['chunks'])} fragmentos)"
-                    
-                    # Mostrar estadísticas
-                    respuesta += "\n\n" + "─"*60
-                    respuesta += "\n💰 Estadísticas de uso (con razonamiento):"
-                    respuesta += f"\n   📥 Tokens entrada: {stats['tokens_entrada']}"
-                    respuesta += f"\n   📤 Tokens salida: {stats['tokens_salida']}"
-                    respuesta += f"\n   🧠 Tokens razonamiento: incluidos en entrada"
-                    respuesta += f"\n   💵 Costo estimado: ${stats['costo_usd']:.6f} USD"
                     
                     return respuesta, stats
             
