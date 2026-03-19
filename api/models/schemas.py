@@ -7,43 +7,100 @@ from datetime import datetime
 # ========== Requests ==========
 
 class QueryRequest(BaseModel):
-    """Request para consultas generales"""
-    pregunta: str = Field(..., description="Pregunta o consulta del usuario", min_length=3)
+    """Request para consultas generales del bot simple"""
+    pregunta: str = Field(
+        ..., 
+        description="Pregunta o consulta sobre documentos de Paperless", 
+        min_length=3,
+        max_length=500
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
                 "pregunta": "¿Qué dice el código de ética sobre integridad?"
-            }
+            },
+            "examples": [
+                {
+                    "pregunta": "Busca contratos de servicios de 2026"
+                },
+                {
+                    "pregunta": "Resume la política de vacaciones"
+                },
+                {
+                    "pregunta": "¿Quién es el corresponsal del documento 123?"
+                }
+            ]
         }
 
 
 class QueryAvanzadaRequest(BaseModel):
-    """Request para consulta rápida del bot avanzado"""
-    pregunta: str = Field(..., description="Pregunta del usuario", min_length=3)
-    filtros: Optional[Dict] = Field(None, description="Filtros de metadata (año, tags)")
+    """Request para consulta rápida del bot avanzado (3 chunks)"""
+    pregunta: str = Field(
+        ..., 
+        description="Pregunta del usuario (consultas directas y simples)", 
+        min_length=3,
+        max_length=500
+    )
+    filtros: Optional[Dict] = Field(
+        None, 
+        description="Filtros de metadata opcionales. Ejemplos: {'created': '2026'}, {'tags': 'contrato'}"
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
                 "pregunta": "¿Cuál es el horario de trabajo?",
                 "filtros": {"created": "2026"}
-            }
+            },
+            "examples": [
+                {
+                    "pregunta": "¿Monto máximo de gastos sin autorización?"
+                },
+                {
+                    "pregunta": "Encuentra facturas de enero",
+                    "filtros": {"tags": "factura"}
+                }
+            ]
         }
 
 
 class RazonamientoRequest(BaseModel):
-    """Request para razonamiento profundo"""
-    pregunta: str = Field(..., description="Pregunta compleja para análisis", min_length=3)
-    filtros: Optional[Dict] = Field(None, description="Filtros de metadata")
-    k: int = Field(10, description="Número de chunks a analizar", ge=1, le=20)
+    """Request para razonamiento profundo (análisis complejos con hasta 20 chunks)"""
+    pregunta: str = Field(
+        ..., 
+        description="Pregunta compleja que requiere análisis profundo y razonamiento", 
+        min_length=3,
+        max_length=1000
+    )
+    filtros: Optional[Dict] = Field(
+        None, 
+        description="Filtros de metadata opcionales"
+    )
+    k: int = Field(
+        10, 
+        description="Número de chunks a analizar (más chunks = más contexto pero más lento)", 
+        ge=1, 
+        le=20
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
-                "pregunta": "Analiza las políticas de vacaciones y compáralas con la legislación",
+                "pregunta": "Analiza las políticas de vacaciones y compáralas con la legislación laboral",
                 "k": 10
-            }
+            },
+            "examples": [
+                {
+                    "pregunta": "Compara los contratos de 2025 vs 2026 y resume los cambios principales",
+                    "k": 15
+                },
+                {
+                    "pregunta": "Explica la relación entre el código de ética y los procedimientos disciplinarios",
+                    "filtros": {"tags": "politica"},
+                    "k": 12
+                }
+            ]
         }
 
 
@@ -79,36 +136,58 @@ class AnalyzeDocumentRequest(BaseModel):
 # ========== Responses ==========
 
 class QueryResponse(BaseModel):
-    """Response para consultas"""
-    respuesta: str = Field(..., description="Respuesta generada por el bot")
-    tiempo_respuesta: float = Field(..., description="Tiempo de procesamiento en segundos")
+    """Response para consultas (bot simple)"""
+    respuesta: str = Field(
+        ..., 
+        description="Respuesta generada por el bot con información de documentos fuente"
+    )
+    tiempo_respuesta: float = Field(
+        ..., 
+        description="Tiempo de procesamiento en segundos"
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
-                "respuesta": "El código de ética define la integridad como...",
+                "respuesta": """El código de ética define la integridad como actuar con honestidad y transparencia en todas las actividades...
+
+──────────────────────────────
+📚 Documentos consultados:
+
+📄 Código de Ética y Conducta (Creado: 2026-03-10)""",
                 "tiempo_respuesta": 2.5
             }
         }
 
 
 class QueryAvanzadaResponse(BaseModel):
-    """Response para consultas del bot avanzado"""
-    respuesta: str = Field(..., description="Respuesta generada")
-    estadisticas: Optional[Dict] = Field(None, description="Estadísticas de uso (tokens, costos)")
-    tiempo_respuesta: float = Field(..., description="Tiempo en segundos")
+    """Response para consultas del bot avanzado (con estadísticas opcionales)"""
+    respuesta: str = Field(
+        ..., 
+        description="Respuesta generada con documentos fuente"
+    )
+    estadisticas: Optional[Dict] = Field(
+        None, 
+        description="Estadísticas de uso (solo OpenAI): tokens_entrada, tokens_salida, tokens_total, costo_usd"
+    )
+    tiempo_respuesta: float = Field(
+        ..., 
+        description="Tiempo total de procesamiento en segundos"
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
-                "respuesta": "El horario de trabajo es...",
+                "respuesta": "El horario de trabajo estándar es de lunes a viernes de 8:00 a 17:00...",
                 "estadisticas": {
                     "tokens_entrada": 150,
                     "tokens_salida": 80,
+                    "tokens_total": 230,
                     "costo_usd": 0.00015
                 },
                 "tiempo_respuesta": 3.2
-            }
+            },
+            "description": "Las estadísticas solo se incluyen cuando se usa OpenAI. Con Ollama (local) será null."
         }
 
 

@@ -21,12 +21,31 @@ router = APIRouter(
 )
 
 
-@router.post("/consulta-rapida", response_model=QueryAvanzadaResponse, summary="Consulta rápida")
+@router.post("/consulta-rapida", response_model=QueryAvanzadaResponse, summary="Consulta rápida (3 chunks)")
 async def consulta_rapida(
     request: QueryAvanzadaRequest,
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
-    """Consulta rápida con 3 chunks y modelo rápido. Ideal para consultas simples."""
+    """
+    Consulta rápida con modelo optimizado para respuestas directas.
+    
+    **Características:**
+    - Usa solo 3 chunks más relevantes
+    - Modelo rápido: GPT-4o-mini (OpenAI) o Ollama
+    - Respuesta en segundos
+    - Monitoreo de tokens y costos (OpenAI)
+    
+    **Ideal para:**
+    - Preguntas directas: "¿Cuál es el horario de trabajo?"
+    - Búsqueda de información específica
+    - Consultas frecuentes
+    
+    **Retorna:**
+    - Respuesta generada
+    - Estadísticas de uso (solo OpenAI)
+    - Documentos consultados
+    - Tiempo de procesamiento
+    """
     try:
         start_time = time.time()
         respuesta, stats = bot.consulta_rapida(request.pregunta, request.filtros)
@@ -42,12 +61,37 @@ async def consulta_rapida(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/razonamiento-profundo", response_model=QueryAvanzadaResponse, summary="Razonamiento profundo")
+@router.post("/razonamiento-profundo", response_model=QueryAvanzadaResponse, summary="Análisis profundo (hasta 20 chunks)")
 async def razonamiento_profundo(
     request: RazonamientoRequest,
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
-    """Análisis profundo con hasta 20 chunks. Ideal para preguntas complejas y comparaciones."""
+    """
+    Análisis profundo con razonamiento avanzado para consultas complejas.
+    
+    **Características:**
+    - Analiza hasta 20 chunks (configurable con parámetro k)
+    - Modelo avanzado: GPT-4o con reasoning_effort="medium" (OpenAI) o Ollama
+    - Razonamiento estructurado paso a paso
+    - Context caching para reducir costos (OpenAI)
+    
+    **Ideal para:**
+    - Análisis complejos: "Compara las políticas de 2025 vs 2026"
+    - Generación de resúmenes detallados
+    - Búsqueda de patrones y tendencias
+    - Preguntas que requieren múltiples documentos
+    
+    **Parámetros:**
+    - `pregunta`: Pregunta compleja a analizar
+    - `filtros`: Filtros opcionales (año, tags)
+    - `k`: Número de chunks (1-20, default: 10)
+    
+    **Retorna:**
+    - Análisis estructurado con razonamiento
+    - Estadísticas detalladas (tokens de razonamiento incluidos)
+    - Documentos analizados con fragmentos
+    - Tiempo de procesamiento
+    """
     try:
         start_time = time.time()
         respuesta, stats = bot.razonamiento_profundo(
@@ -67,12 +111,35 @@ async def razonamiento_profundo(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/busqueda-semantica", response_model=BusquedaSemanticaResponse, summary="Búsqueda semántica")
+@router.post("/busqueda-semantica", response_model=BusquedaSemanticaResponse, summary="Búsqueda vectorial sin IA")
 async def busqueda_semantica(
     request: BusquedaSemanticaRequest,
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
-    """Búsqueda semántica sin generación de respuesta. Devuelve chunks más similares."""
+    """
+    Búsqueda semántica pura en ChromaDB sin generación de respuesta con IA.
+    
+    **Funcionalidad:**
+    - Vectoriza la consulta con embeddings
+    - Busca chunks más similares por similitud coseno
+    - NO genera respuesta (solo retorna fragmentos)
+    - Útil para encontrar documentos relevantes
+    
+    **Parámetros:**
+    - `query`: Texto de búsqueda
+    - `k`: Número de resultados (1-20, default: 5)
+    - `filtros`: Filtros opcionales (año, tags, etc.)
+    
+    **Retorna:**
+    - Lista de fragmentos (chunks) más relevantes
+    - Metadata: título, fecha, índice de chunk
+    - Preview del contenido (primeros 200 caracteres)
+    
+    **Diferencia con /consulta-rapida:**
+    - Esta búsqueda NO usa IA para generar respuestas
+    - Solo retorna los fragmentos encontrados
+    - Más rápida y sin costos de tokens
+    """
     try:
         start_time = time.time()
         resultados = bot.buscar_semantica(request.query, request.k, request.filtros)
@@ -100,19 +167,26 @@ async def busqueda_semantica(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/stats", response_model=StatsResponse, summary="Estadísticas")
+@router.get("/stats", response_model=StatsResponse, summary="Estadísticas del sistema")
 async def get_stats(
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
     """
-    Obtener estadísticas del bot avanzado.
+    Obtener estadísticas completas del bot avanzado y su infraestructura.
     
-    Devuelve:
-    - Total de documentos indexados
-    - Total de vectores en ChromaDB
-    - Modo actual (local/cloud)
-    - Modelos configurados
-    - Lista de documentos indexados
+    **Información devuelta:**
+    - **total_documentos**: Número de documentos indexados
+    - **total_vectores**: Número total de vectores en ChromaDB
+    - **modo**: "local (Ollama)" o "cloud (OpenAI)"
+    - **modelo_rapido**: Modelo usado para consultas rápidas
+    - **modelo_razonamiento**: Modelo usado para análisis profundos
+    - **documentos_indexados**: Lista detallada (próximamente)
+    
+    **Útil para:**
+    - Monitorear estado del sistema
+    - Validar configuración de modelos
+    - Verificar tamaño de la base de vectores
+    - Auditoría de documentos indexados
     """
     try:
         # Obtener modo
@@ -144,23 +218,37 @@ async def get_stats(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/reindexar", response_model=ReindexarResponse, summary="Forzar reindexación")
+@router.post("/reindexar", response_model=ReindexarResponse, summary="Reindexar todos los documentos")
 async def reindexar(
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
     """
-    Forzar reindexación de todos los documentos.
+    Forzar reindexación completa de todos los documentos de Paperless.
     
-    **ADVERTENCIA**: Esta operación puede tardar varios minutos.
+    **⚠️ ADVERTENCIA:**
+    - Esta operación puede tardar **varios minutos** dependiendo del número de documentos
+    - Consume recursos significativos (CPU, memoria, ancho de banda)
+    - Solo ejecutar cuando sea necesario
     
-    - Descarga todos los documentos de Paperless
-    - Re-vectoriza todos los chunks
-    - Actualiza ChromaDB
+    **Proceso:**
+    1. Limpia el registro de documentos indexados
+    2. Descarga todos los documentos de Paperless  
+    3. Extrae contenido OCR de cada documento
+    4. Divide en chunks (fragmentos)
+    5. Genera embeddings (vectorización)
+    6. Almacena en ChromaDB
     
-    Útil cuando:
-    - Se actualizan documentos en Paperless
-    - Se cambia el modelo de embeddings
-    - Se corrompe la base de datos de vectores
+    **Cuándo usar:**
+    - Documentos actualizados en Paperless no se reflejan
+    - Cambio de modelo de embeddings (OpenAI ↔ Ollama)
+    - Corrupción de base de datos de vectores
+    - Cambio en chunk_size o chunk_overlap
+    
+    **Retorna:**
+    - Mensaje de confirmación
+    - Número de documentos nuevos indexados
+    - Número total de documentos actualizados
+    - Tiempo total de la operación
     """
     try:
         start_time = time.time()
@@ -190,23 +278,24 @@ async def reindexar(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/documents", response_model=DocumentosListResponse, summary="Listar todos los documentos")
+@router.get("/documents", response_model=DocumentosListResponse, summary="Listar documentos de Paperless")
 async def list_documents(
     limite: int = 100,
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
     """
-    Obtener lista completa de documentos de Paperless.
+    Obtener lista de documentos directamente desde Paperless (ordenados por fecha).
     
-    - **limite**: Número máximo de documentos a devolver (default: 100)
+    **Parámetros:**
+    - `limite`: Número máximo de documentos (default: 100)
     
-    Devuelve JSON estandarizado con:
-    - id: ID del documento en Paperless
-    - title: Título del documento
-    - created: Fecha de creación
-    - modified: Fecha de modificación
-    - tags: Lista de IDs de tags
-    - document_type: ID del tipo de documento
+    **Formato de respuesta:**
+    - JSON estandarizado compatible con Paperless API
+    - Campos: id, title, created, modified, tags, document_type, correspondent, archive_serial_number
+    
+    **Nota:**
+    Este endpoint consulta directamente Paperless, no usa ChromaDB.
+    Para búsqueda semántica, usar `/busqueda-semantica`.
     """
     try:
         import requests
@@ -264,22 +353,29 @@ async def list_documents(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/recent-documents", response_model=DocumentosListResponse, summary="Listar documentos recientes")
+@router.get("/recent-documents", response_model=DocumentosListResponse, summary="Documentos recientes de Paperless")
 async def recent_documents(
     limite: int = 10,
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
     """
-    Obtener lista de documentos recientes de Paperless (ordenados por fecha).
+    Obtener los documentos más recientes de Paperless (ordenados por fecha de creación).
     
-    - **limite**: Número de documentos a devolver (default: 10)
+    **Parámetros:**
+    - `limite`: Número de documentos a devolver (default: 10, recomendado para últimos documentos)
     
-    Devuelve JSON estandarizado con los últimos documentos:
-    - id: ID del documento
-    - title: Título
-    - created: Fecha de creación
-    - modified: Fecha de modificación
-    - tags: IDs de tags
+    **Diferencia con `/documents`:**
+    - Este endpoint es optimizado para consultas rápidas de documentos recientes
+    - `/documents` es para listas más grandes (hasta 100)
+    
+    **Formato de respuesta:**
+    - JSON estandarizado con metadata completa
+    - Ordenados por fecha de creación (más recientes primero)
+    
+    **Casos de uso:**
+    - Dashboard de documentos recientes
+    - Monitoreo de nuevos documentos subidos
+    - Validación de procesamiento OCR
     """
     try:
         import requests
@@ -337,19 +433,43 @@ async def recent_documents(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health", response_model=HealthResponse, summary="Health check")
+@router.get("/health", response_model=HealthResponse, summary="Estado del bot avanzado")
 async def health(
     bot: BotDocumentosAvanzado = Depends(get_bot_avanzado)
 ):
     """
-    Verificar el estado del bot avanzado.
+    Verificar el estado de salud del bot avanzado y todos sus componentes.
     
-    Devuelve:
-    - Estado del servicio
-    - Disponibilidad de modelos de IA
-    - Disponibilidad de ChromaDB
-    - Conexión con Paperless
-    - Total de documentos indexados
+    **Componentes verificados:**
+    
+    1. **IA (Modelos):**
+       - Modelo rápido (GPT-4o-mini/Ollama)
+       - Modelo de razonamiento (GPT-4o/Ollama)
+       - Disponibilidad de conexión
+    
+    2. **ChromaDB:**
+       - Estado de la base de vectores
+       - Accesibilidad del vector store
+    
+    3. **Paperless:**
+       - Conexión con servidor
+       - Validación de credenciales
+       - Respuesta de API
+    
+    4. **Documentos:**
+       - Total de documentos indexados
+       - Estado de vectorización
+    
+    **Estados posibles:**
+    - `healthy`: Todos los componentes funcionando correctamente
+    - `degraded`: Algunos componentes con problemas (servicio parcial)
+    - `unhealthy`: Sistema no disponible
+    
+    **Uso recomendado:**
+    - Monitoreo de infraestructura
+    - Health checks de load balancers
+    - Validación pre-deployment
+    - Troubleshooting de problemas
     """
     try:
         # Verificar componentes

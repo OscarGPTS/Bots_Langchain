@@ -18,12 +18,29 @@ router = APIRouter(
 )
 
 
-@router.post("/query", response_model=QueryResponse, summary="Consulta general")
+@router.post("/query", response_model=QueryResponse, summary="Consulta general de documentos")
 async def query(
     request: QueryRequest,
     bot: BotDocumentos = Depends(get_bot_simple)
 ):
-    """Realizar consulta general con búsqueda semántica y generación de respuesta con IA."""
+    """
+    Realizar consulta sobre documentos de Paperless con búsqueda semántica e IA.
+    
+    **Funcionalidad:**
+    - Busca documentos relevantes en ChromaDB usando embeddings
+    - Genera respuesta inteligente usando Ollama
+    - Incluye información de documentos fuente
+    
+    **Casos de uso:**
+    - "¿Qué dice el código de ética sobre integridad?"
+    - "Busca contratos de 2026"
+    - "Resume la política de vacaciones"
+    
+    **Limitaciones:**
+    - Solo busca en documentos de Paperless
+    - No consulta información de RH/empleados
+    - Usa modelo local (Ollama)
+    """
     try:
         start_time = time.time()
         respuesta = bot.procesar(request.pregunta)
@@ -38,12 +55,27 @@ async def query(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/analyze-document", response_model=QueryResponse, summary="Analizar documento específico")
+@router.post("/analyze-document", response_model=QueryResponse, summary="Analizar documento específico por ID")
 async def analyze_document(
     request: AnalyzeDocumentRequest,
     bot: BotDocumentos = Depends(get_bot_simple)
 ):
-    """Analizar documento por ID. Si no se proporciona pregunta, genera resumen ejecutivo."""
+    """
+    Analizar un documento específico de Paperless por su ID.
+    
+    **Funcionalidad:**
+    - Extrae contenido completo del documento (OCR)
+    - Responde preguntas específicas sobre el documento
+    - Si no se proporciona pregunta, genera resumen ejecutivo
+    
+    **Parámetros:**
+    - `documento_id`: ID del documento en Paperless (requerido)
+    - `pregunta`: Pregunta específica (opcional)
+    
+    **Ejemplos:**
+    - Resumen: `{"documento_id": 1}`
+    - Análisis: `{"documento_id": 1, "pregunta": "¿Cuáles son las condiciones de pago?"}`
+    """
     try:
         start_time = time.time()
         respuesta = bot.analizar_documento(request.documento_id, request.pregunta or "")
@@ -58,12 +90,26 @@ async def analyze_document(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/documents", response_model=DocumentosListResponse, summary="Listar todos los documentos")
+@router.get("/documents", response_model=DocumentosListResponse, summary="Listar documentos de Paperless")
 async def list_documents(
     limite: int = 100,
     bot: BotDocumentos = Depends(get_bot_simple)
 ):
-    """Obtener lista de documentos de Paperless con formato JSON estandarizado."""
+    """
+    Obtener lista de documentos de Paperless (ordenados por más recientes).
+    
+    **Parámetros:**
+    - `limite`: Número máximo de documentos a devolver (default: 100, max: 100)
+    
+    **Retorna:**
+    - Lista de documentos con metadata (ID, título, fecha, tags, etc.)
+    - Total de documentos
+    - Tiempo de respuesta
+    
+    **Formato:**
+    - JSON estandarizado compatible con Paperless API
+    - Incluye: id, title, created, modified, tags, document_type, correspondent
+    """
     try:
         start_time = time.time()
         documentos_raw = bot.buscar_documentos("", max_resultados=limite)
@@ -144,11 +190,24 @@ async def recent_documents(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health", response_model=HealthResponse, summary="Health check")
+@router.get("/health", response_model=HealthResponse, summary="Estado del bot simple")
 async def health(
     bot: BotDocumentos = Depends(get_bot_simple)
 ):
-    """Verificar estado del bot simple y componentes."""
+    """
+    Verificar estado del bot simple y sus componentes.
+    
+    **Componentes verificados:**
+    - IA (Ollama): disponibilidad del modelo
+    - ChromaDB: estado de la base de vectores
+    - Paperless: conexión con servidor
+    - Documentos: total indexados
+    
+    **Estados posibles:**
+    - `healthy`: Todos los componentes funcionando
+    - `degraded`: Algunos componentes con problemas
+    - `unhealthy`: Servicio no disponible
+    """
     try:
         ia_disponible = bot.llm is not None
         chromadb_disponible = bot.vector_store is not None
