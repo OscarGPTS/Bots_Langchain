@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime
 import time
+import os
 
 from api.models.schemas import (
     QueryRequest, QueryResponse,
@@ -16,6 +17,22 @@ router = APIRouter(
     prefix="/api/v1/bot-simple",
     tags=["Bot Simple"]
 )
+
+
+def _build_document_urls(doc_id: int) -> dict:
+    """Construir URLs de Paperless para un documento"""
+    paperless_url = os.getenv('PAPERLESS_URL', '')
+    if not paperless_url:
+        return {"download_url": None, "preview_url": None, "thumbnail_url": None}
+    
+    # Remover trailing slash si existe
+    paperless_url = paperless_url.rstrip('/')
+    
+    return {
+        "download_url": f"{paperless_url}/api/documents/{doc_id}/download/",
+        "preview_url": f"{paperless_url}/api/documents/{doc_id}/preview/",
+        "thumbnail_url": f"{paperless_url}/api/documents/{doc_id}/thumb/"
+    }
 
 
 @router.post("/query", response_model=QueryResponse, summary="Consulta general de documentos")
@@ -123,7 +140,8 @@ async def list_documents(
                 archive_serial_number=doc.get("archive_serial_number"),
                 correspondent=doc.get("correspondent"),
                 document_type=doc.get("document_type"),
-                tags=doc.get("tags", [])
+                tags=doc.get("tags", []),
+                **_build_document_urls(doc.get("id"))
             )
             for doc in documentos_raw
         ]
@@ -173,7 +191,8 @@ async def recent_documents(
                 archive_serial_number=doc.get("archive_serial_number"),
                 correspondent=doc.get("correspondent"),
                 document_type=doc.get("document_type"),
-                tags=doc.get("tags", [])
+                tags=doc.get("tags", []),
+                **_build_document_urls(doc.get("id"))
             )
             for doc in documentos_raw
         ]

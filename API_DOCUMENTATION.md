@@ -203,8 +203,24 @@ curl -X GET "https://bots.tech-energy.lat/api/v1/bot-simple/documents?limite=10"
   - `correspondent` (integer|null): ID del corresponsal
   - `document_type` (integer|null): ID del tipo de documento
   - `tags` (array): IDs de tags asociados
+  - `download_url` (string): URL para descargar el documento original
+  - `preview_url` (string): URL para visualizar/preview del documento
+  - `thumbnail_url` (string): URL para thumbnail (miniatura) del documento
 - `total` (integer): Total de documentos retornados
 - `tiempo_respuesta` (float): Tiempo de procesamiento en segundos
+
+**📌 Nota sobre URLs de documentos:**
+Los campos `download_url`, `preview_url` y `thumbnail_url` permiten acceso directo a los documentos en Paperless:
+- **download_url**: Descarga el archivo original (PDF, imagen, etc.)
+- **preview_url**: Visualización del documento en navegador (ideal para iframes)
+- **thumbnail_url**: Miniatura del documento (ideal para listados/grids)
+
+⚠️ **Importante**: Estas URLs requieren autenticación con el token de Paperless. En el frontend, debes incluir el header:
+```javascript
+headers: {
+  'Authorization': 'Token YOUR_PAPERLESS_TOKEN'
+}
+```
 
 ---
 
@@ -551,9 +567,17 @@ curl -X GET "https://bots.tech-energy.lat/api/v1/bot-avanzado/recent-documents?l
   "archive_serial_number": null,
   "correspondent": null,
   "document_type": 1,
-  "tags": [1, 2, 3]
+  "tags": [1, 2, 3],
+  "download_url": "https://paperless.example.com/api/documents/1/download/",
+  "preview_url": "https://paperless.example.com/api/documents/1/preview/",
+  "thumbnail_url": "https://paperless.example.com/api/documents/1/thumb/"
 }
 ```
+
+**Nuevos campos de URLs:**
+- `download_url`: URL para descargar el archivo original
+- `preview_url`: URL para visualizar el documento en navegador
+- `thumbnail_url`: URL de miniatura del documento
 
 ### DocumentoInfo (Chunk)
 
@@ -733,6 +757,138 @@ La API depende de:
 - **Ollama/OpenAI**: Para generación de respuestas
 
 Si algún servicio está caído, los endpoints afectados retornarán error 503.
+
+---
+
+## 📎 Uso de URLs de Documentos en Frontend
+
+Los endpoints de documentos ahora incluyen URLs listas para usar en aplicaciones frontend:
+
+### Campos de URL Disponibles
+
+Cada objeto `DocumentoPaperless` incluye:
+- **`download_url`**: Descarga directa del archivo original
+- **`preview_url`**: Vista previa del documento (PDF renderizado)
+- **`thumbnail_url`**: Miniatura para listas o galerías
+
+### Autenticación Requerida
+
+**Importante**: Todas las URLs requieren el header de autenticación de Paperless:
+
+```javascript
+Authorization: Token YOUR_PAPERLESS_TOKEN
+```
+
+### Ejemplos de Uso
+
+#### 1. Mostrar Miniaturas en una Lista
+
+```html
+<div class="document-list">
+  <!-- Para cada documento -->
+  <div class="document-card">
+    <img 
+      src="${documento.thumbnail_url}" 
+      alt="${documento.title}"
+      onerror="this.src='/placeholder.png'"
+    />
+    <h3>${documento.title}</h3>
+  </div>
+</div>
+```
+
+#### 2. Botón de Descarga con Fetch
+
+```javascript
+async function descargarDocumento(downloadUrl, filename) {
+  const response = await fetch(downloadUrl, {
+    headers: {
+      'Authorization': `Token ${PAPERLESS_TOKEN}`
+    }
+  });
+  
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  window.URL.revokeObjectURL(url);
+}
+```
+
+#### 3. Preview en Modal/Iframe
+
+```html
+<div class="modal">
+  <iframe 
+    id="document-preview"
+    src="" 
+    style="width: 100%; height: 600px;"
+  ></iframe>
+</div>
+
+<script>
+function mostrarPreview(previewUrl) {
+  // Nota: iframes tienen limitaciones con headers custom
+  // Mejor usar fetch + blob para mayor control
+  fetch(previewUrl, {
+    headers: { 'Authorization': `Token ${PAPERLESS_TOKEN}` }
+  })
+  .then(res => res.blob())
+  .then(blob => {
+    const url = URL.createObjectURL(blob);
+    document.getElementById('document-preview').src = url;
+  });
+}
+</script>
+```
+
+#### 4. React Component Ejemplo
+
+```jsx
+function DocumentCard({ documento }) {
+  const [previewUrl, setPreviewUrl] = useState(null);
+  
+  const loadPreview = async () => {
+    const response = await fetch(documento.preview_url, {
+      headers: { 'Authorization': `Token ${process.env.PAPERLESS_TOKEN}` }
+    });
+    const blob = await response.blob();
+    setPreviewUrl(URL.createObjectURL(blob));
+  };
+  
+  return (
+    <div className="card">
+      <img src={documento.thumbnail_url} alt={documento.title} />
+      <h3>{documento.title}</h3>
+      <button onClick={loadPreview}>Ver Preview</button>
+      <a href={documento.download_url} download>Descargar</a>
+      
+      {previewUrl && <iframe src={previewUrl} />}
+    </div>
+  );
+}
+```
+
+### Manejo de Errores
+
+```javascript
+// Verificar si las URLs están disponibles
+if (documento.download_url) {
+  // URL disponible - mostrar botón de descarga
+} else {
+  // PAPERLESS_URL no configurado o documento sin ID
+  console.warn('URL de documento no disponible');
+}
+```
+
+### Consideraciones
+
+1. **CORS**: Asegúrate de que Paperless-ngx tenga CORS configurado para tu dominio frontend
+2. **Seguridad**: Nunca expongas el `PAPERLESS_TOKEN` en el frontend - usa un proxy backend
+3. **Performance**: Las miniaturas son más ligeras que previews completos - úsalas en listas
+4. **Caché**: Considera cachear blobs de documentos para evitar descargas repetidas
 
 ---
 

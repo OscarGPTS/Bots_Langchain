@@ -203,7 +203,7 @@ class DocumentoInfo(BaseModel):
 
 
 class DocumentoPaperless(BaseModel):
-    """Documento completo de Paperless"""
+    """Documento completo de Paperless con URLs para preview y descarga"""
     id: int = Field(..., description="ID del documento en Paperless")
     title: str = Field(..., description="Título del documento")
     created: str = Field(..., description="Fecha de creación")
@@ -213,6 +213,11 @@ class DocumentoPaperless(BaseModel):
     correspondent: Optional[int] = Field(None, description="ID del corresponsal")
     document_type: Optional[int] = Field(None, description="ID del tipo de documento")
     tags: Optional[List[int]] = Field(default_factory=list, description="IDs de tags")
+    
+    # URLs para frontend
+    download_url: Optional[str] = Field(None, description="URL para descargar el documento original")
+    preview_url: Optional[str] = Field(None, description="URL para preview/visualización del documento")
+    thumbnail_url: Optional[str] = Field(None, description="URL para thumbnail (miniatura)")
     
     class Config:
         json_schema_extra = {
@@ -224,13 +229,16 @@ class DocumentoPaperless(BaseModel):
                 "archive_serial_number": None,
                 "correspondent": None,
                 "document_type": 1,
-                "tags": []
+                "tags": [],
+                "download_url": "https://paperless.example.com/api/documents/1/download/",
+                "preview_url": "https://paperless.example.com/api/documents/1/preview/",
+                "thumbnail_url": "https://paperless.example.com/api/documents/1/thumb/"
             }
         }
 
 
 class DocumentosListResponse(BaseModel):
-    """Response para lista de documentos"""
+    """Response para lista de documentos con URLs para preview"""
     documentos: List[DocumentoPaperless]
     total: int = Field(..., description="Total de documentos")
     tiempo_respuesta: float = Field(..., description="Tiempo en segundos")
@@ -244,12 +252,28 @@ class DocumentosListResponse(BaseModel):
                         "title": "Código de Ética",
                         "created": "2026-03-10",
                         "modified": "2026-03-11",
-                        "tags": []
+                        "tags": [],
+                        "download_url": "https://paperless.example.com/api/documents/1/download/",
+                        "preview_url": "https://paperless.example.com/api/documents/1/preview/",
+                        "thumbnail_url": "https://paperless.example.com/api/documents/1/thumb/"
                     }
                 ],
                 "total": 1,
                 "tiempo_respuesta": 0.5
-            }
+            },
+            "description": """Las URLs incluidas permiten:
+- **download_url**: Descargar el archivo original (PDF, imagen, etc.)
+- **preview_url**: Mostrar preview del documento en navegador
+- **thumbnail_url**: Cargar miniatura (para listados/grids)
+
+Las URLs requieren autenticación con el token de Paperless.
+Ejemplo de uso en frontend:
+```html
+<img src="{thumbnail_url}" />
+<a href="{download_url}">Descargar</a>
+<iframe src="{preview_url}"></iframe>
+```
+"""
         }
     
 

@@ -21,6 +21,22 @@ router = APIRouter(
 )
 
 
+def _build_document_urls(doc_id: int) -> dict:
+    """Construir URLs de Paperless para un documento"""
+    paperless_url = os.getenv('PAPERLESS_URL', '')
+    if not paperless_url:
+        return {"download_url": None, "preview_url": None, "thumbnail_url": None}
+    
+    # Remover trailing slash si existe
+    paperless_url = paperless_url.rstrip('/')
+    
+    return {
+        "download_url": f"{paperless_url}/api/documents/{doc_id}/download/",
+        "preview_url": f"{paperless_url}/api/documents/{doc_id}/preview/",
+        "thumbnail_url": f"{paperless_url}/api/documents/{doc_id}/thumb/"
+    }
+
+
 @router.post("/consulta-rapida", response_model=QueryAvanzadaResponse, summary="Consulta rápida (3 chunks)")
 async def consulta_rapida(
     request: QueryAvanzadaRequest,
@@ -334,7 +350,8 @@ async def list_documents(
                 archive_serial_number=doc.get("archive_serial_number"),
                 correspondent=doc.get("correspondent"),
                 document_type=doc.get("document_type"),
-                tags=doc.get("tags", [])
+                tags=doc.get("tags", []),
+                **_build_document_urls(doc.get("id"))
             )
             for doc in documentos_raw
         ]
@@ -414,7 +431,8 @@ async def recent_documents(
                 archive_serial_number=doc.get("archive_serial_number"),
                 correspondent=doc.get("correspondent"),
                 document_type=doc.get("document_type"),
-                tags=doc.get("tags", [])
+                tags=doc.get("tags", []),
+                **_build_document_urls(doc.get("id"))
             )
             for doc in documentos_raw
         ]
