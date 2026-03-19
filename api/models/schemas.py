@@ -230,9 +230,9 @@ class DocumentoPaperless(BaseModel):
                 "correspondent": None,
                 "document_type": 1,
                 "tags": [],
-                "download_url": "https://paperless.example.com/api/documents/1/download/",
-                "preview_url": "https://paperless.example.com/api/documents/1/preview/",
-                "thumbnail_url": "https://paperless.example.com/api/documents/1/thumb/"
+                "download_url": "https://paperless.tech-energy.lat/api/documents/1/download/",
+                "preview_url": "https://paperless.tech-energy.lat/api/documents/1/preview/",
+                "thumbnail_url": "https://paperless.tech-energy.lat/api/documents/1/thumb/"
             }
         }
 
@@ -253,9 +253,9 @@ class DocumentosListResponse(BaseModel):
                         "created": "2026-03-10",
                         "modified": "2026-03-11",
                         "tags": [],
-                        "download_url": "https://paperless.example.com/api/documents/1/download/",
-                        "preview_url": "https://paperless.example.com/api/documents/1/preview/",
-                        "thumbnail_url": "https://paperless.example.com/api/documents/1/thumb/"
+                        "download_url": "https://paperless.tech-energy.lat/api/documents/1/download/",
+                        "preview_url": "https://paperless.tech-energy.lat/api/documents/1/preview/",
+                        "thumbnail_url": "https://paperless.tech-energy.lat/api/documents/1/thumb/"
                     }
                 ],
                 "total": 1,

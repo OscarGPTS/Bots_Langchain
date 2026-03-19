@@ -568,9 +568,9 @@ curl -X GET "https://bots.tech-energy.lat/api/v1/bot-avanzado/recent-documents?l
   "correspondent": null,
   "document_type": 1,
   "tags": [1, 2, 3],
-  "download_url": "https://paperless.example.com/api/documents/1/download/",
-  "preview_url": "https://paperless.example.com/api/documents/1/preview/",
-  "thumbnail_url": "https://paperless.example.com/api/documents/1/thumb/"
+  "download_url": "https://paperless.tech-energy.lat/api/documents/1/download/",
+  "preview_url": "https://paperless.tech-energy.lat/api/documents/1/preview/",
+  "thumbnail_url": "https://paperless.tech-energy.lat/api/documents/1/thumb/"
 }
 ```
 
