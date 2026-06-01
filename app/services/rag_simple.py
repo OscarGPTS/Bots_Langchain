@@ -30,7 +30,10 @@ class BotDocumentos:
         self._inicializar_ia()
         self._inicializar_chromadb()
         self._verificar_paperless()
-        self._cargar_documentos()
+        if settings.INDEX_ON_STARTUP:
+            self._cargar_documentos()
+        else:
+            self._cargar_documentos_indexados_existentes()
     
     def _inicializar_ia(self):
         """Inicializar modelo de IA"""
@@ -109,6 +112,24 @@ class BotDocumentos:
             import traceback
             traceback.print_exc()
     
+    def _cargar_documentos_indexados_existentes(self):
+        """Poblar el registro de documentos ya indexados desde ChromaDB.
+
+        No descarga ni indexa desde Paperless; solo lee la colección persistida
+        para que health/stats reporten conteos correctos sin reindexar.
+        """
+        if self.vector_store is None:
+            return
+        try:
+            data = self.vector_store._collection.get(include=["metadatas"])
+            for meta in data.get("metadatas", []) or []:
+                doc_id = (meta or {}).get("doc_id")
+                if doc_id:
+                    self.documentos_indexados.add(str(doc_id))
+            print(f"📚 {len(self.documentos_indexados)} documentos ya indexados en ChromaDB")
+        except Exception as e:
+            print(f"⚠️ No se pudo leer la colección existente: {e}")
+
     def _cargar_documentos(self):
         """Cargar y vectorizar documentos desde Paperless si no están indexados"""
         if self.vector_store is None:

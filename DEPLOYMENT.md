@@ -111,7 +111,17 @@ sudo lsof -i :8001
 cd /home/www/Bots_Langchain
 sudo -u tech-energy git pull origin main
 sudo systemctl restart bots
+
+# Indexar documentos (la API ya NO indexa en el arranque por defecto).
+# Ejecutar tras el primer despliegue y cuando haya documentos nuevos en Paperless:
+sudo -u tech-energy /home/www/Bots_Langchain/.venv/bin/python scripts/indexar_docs.py
+# (o llamar al endpoint protegido: POST /api/v1/bot-avanzado/reindexar con X-Admin-Token)
 ```
+
+> **Indexación:** desde la reestructuración, la indexación es una operación
+> explícita (`scripts/indexar_docs.py` o `/reindexar`). Esto evita que los 4
+> workers de Gunicorn indexen en paralelo contra la misma ChromaDB. Si prefieres
+> el comportamiento anterior, define `INDEX_ON_STARTUP=true` en el `.env`.
 
 ### 5. Solución de Problemas Comunes
 

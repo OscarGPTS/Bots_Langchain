@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 150
 
+    # Indexar todos los documentos al construir el bot (arranque de la app).
+    # Por defecto False: la indexación se hace de forma explícita con
+    # `scripts/indexar_docs.py` o el endpoint protegido `/reindexar`. Esto evita
+    # que varios workers de Gunicorn indexen en paralelo contra la misma ChromaDB.
+    INDEX_ON_STARTUP: bool = False
+
     # ===== API de RH (opcional) =====
     API_RH_URL: Optional[str] = None
 

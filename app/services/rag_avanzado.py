@@ -66,10 +66,30 @@ class BotDocumentosAvanzado:
         self._inicializar_vector_store()
         self._inicializar_modelos_ia()
         self._inicializar_text_splitter()
-        self._cargar_documentos_paperless()
-        
+        if settings.INDEX_ON_STARTUP:
+            self._cargar_documentos_paperless()
+        else:
+            self._cargar_documentos_indexados_existentes()
+
         print("\n✅ Bot inicializado correctamente")
         print("="*70)
+
+    def _cargar_documentos_indexados_existentes(self):
+        """Poblar el registro de documentos ya indexados desde ChromaDB.
+
+        No descarga ni indexa desde Paperless; solo lee la colección persistida.
+        """
+        if self.vector_store is None:
+            return
+        try:
+            data = self.vector_store._collection.get(include=["metadatas"])
+            for meta in data.get("metadatas", []) or []:
+                doc_id = (meta or {}).get("doc_id")
+                if doc_id:
+                    self.documentos_indexados.add(str(doc_id))
+            print(f"📚 {len(self.documentos_indexados)} documentos ya indexados en ChromaDB")
+        except Exception as e:
+            print(f"⚠️ No se pudo leer la colección existente: {e}")
     
     def _inicializar_embeddings(self):
         """Inicializar embeddings según configuración"""
