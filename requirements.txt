@@ -20,7 +20,9 @@ python-dotenv>=1.0.0
 # FastAPI y servidor
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
+gunicorn>=21.0.0
 pydantic>=2.5.0
+pydantic-settings>=2.0.0
 
 # Modelos de lenguaje
 openai>=1.12.0

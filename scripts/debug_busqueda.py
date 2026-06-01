@@ -7,7 +7,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from bots.bot_documentos import BotDocumentos
+from app.services.rag_simple import BotDocumentos
 
 
 def debug_busqueda():

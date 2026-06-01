@@ -323,48 +323,50 @@ python utils/verificar_ollama.py
 
 ```
 langchain/
-├── api/                               # 🌐 API REST
-│   ├── main.py                        #    App FastAPI principal
-│   ├── dependencies.py                #    Singletons de bots (patrón singleton)
-│   ├── main_docs.py                   #    Versión alternativa de la app
-│   ├── models/
-│   │   └── schemas.py                 #    Modelos Pydantic (requests/responses)
-│   └── routes/
-│       ├── bot_simple.py              #    5 endpoints bot simple
-│       └── bot_avanzado.py            #    8 endpoints bot avanzado
-├── bots/                              # 🤖 Implementaciones de bots
-│   ├── bot_documentos.py              #    Bot Simple (ChromaDB + Ollama)
-│   ├── bot_documentos_avanzado.py     #    Bot Avanzado (ChromaDB + OpenAI/Ollama)
-│   ├── bot_general.py                 #    Bot General (RH + Paperless, uso interno)
-│   └── bot_rh.py                      #    Bot de Recursos Humanos (uso interno)
-├── scripts/
+├── app/                               # 🌐 Paquete de la aplicación (FastAPI)
+│   ├── main.py                        #    App FastAPI principal (app.main:app)
+│   ├── dependencies.py                #    Singletons de bots (inyección)
+│   ├── core/
+│   │   ├── config.py                  #    Settings central (pydantic-settings)
+│   │   ├── logging.py                 #    Configuración de logging
+│   │   └── security.py                #    Dependencia X-Admin-Token (/reindexar)
+│   ├── api/v1/
+│   │   ├── router.py                  #    Agregador de routers v1
+│   │   └── endpoints/
+│   │       ├── bot_simple.py          #    Endpoints bot simple
+│   │       └── bot_avanzado.py        #    Endpoints bot avanzado
+│   ├── schemas/                       #    Modelos Pydantic (requests/responses)
+│   ├── services/                      # 🤖 Lógica de negocio (RAG)
+│   │   ├── rag_simple.py              #    Bot Simple (ChromaDB + Ollama)
+│   │   ├── rag_avanzado.py            #    Bot Avanzado (ChromaDB + OpenAI/Ollama)
+│   │   ├── rh.py                      #    Bot RH (uso interno / herramienta)
+│   │   └── general.py                 #    Bot General (uso interno / herramienta)
+│   └── clients/                       #    Integraciones externas
+│       └── paperless.py               #    Cliente Paperless (URLs de documentos)
+├── api/                               # 🔁 Shim de compatibilidad
+│   └── main.py                        #    Re-exporta app.main:app (gunicorn legacy)
+├── tests/                             # 🧪 Pruebas
+│   ├── unit/                          #    Tests unitarios (pytest, offline)
+│   └── integration/                   #    Scripts legacy (requieren servicios)
+├── scripts/                           # 🛠️  Utilidades operativas
 │   ├── iniciar_api.py                 # ▶️  Iniciar API (desarrollo)
-│   ├── test_api_cliente.py            # 🧪 Tests completos de todos los endpoints
-│   ├── test_api_imports.py            # ✅ Validar que los imports funcionan
-│   ├── indexar_docs_simple.py         # 📥 Forzar reindexación en colección simple
-│   ├── instalar_bot_avanzado.py       # 📦 Instalar dependencias del bot avanzado
+│   ├── indexar_docs.py                # 📥 Indexación manual
+│   ├── generar_token_paperless.py     # 🔑 Generar token de Paperless
+│   ├── inspeccionar_chromadb.py       # 🔎 Inspeccionar ChromaDB
+│   ├── debug_busqueda.py              # 🔍 Depurar búsquedas
 │   ├── crear_db_ejemplo.py            # 🗄️  Crear base de datos de ejemplo
-│   ├── debug_busqueda.py              # 🔍 Depurar búsquedas en ChromaDB
-│   ├── inspeccionar_chromadb.py       # 🔎 Inspeccionar colecciones de ChromaDB
-│   ├── generar_token_paperless.py     # 🔑 Generar token de acceso a Paperless
-│   ├── probar_paperless.py            # 🌐 Probar conexión con Paperless
-│   ├── probar_bot_avanzado.py         # 🧪 Test del bot avanzado directamente
-│   ├── probar_bot_documentos.py       # 🧪 Test del bot simple directamente
-│   ├── probar_api_rh.py               # 🧪 Test de la API de RH
-│   ├── prueba_bot_simple.py           # 🧪 Prueba rápida del bot simple
-│   ├── prueba_simple_bot_avanzado.py  # 🧪 Prueba rápida del bot avanzado
-│   ├── test_casos_reales.py           # 🧪 Test con casos de uso reales
-│   ├── test_problema.py               # 🧪 Test de escenarios problemáticos
-│   ├── test_realista.py               # 🧪 Test con datos realistas
-│   ├── test_simple.py                 # 🧪 Test unitario simple
-│   └── validacion_final.py            # ✅ Validación final antes de despliegue
-├── utils/
-│   └── verificar_ollama.py            # 🔍 Verificar modelos Ollama disponibles
+│   ├── instalar_bot_avanzado.py       # 📦 Instalar dependencias del bot avanzado
+│   └── verificar_ollama.py            # 🔍 Verificar modelos Ollama
 ├── chroma_db/                         # 📊 Base de datos vectorial (persistente)
-├── data/                              # 📁 Datos locales (documentos de ejemplo)
+├── data/                              # 📁 Datos locales
 ├── .env                               # 🔐 Configuración (crear desde .env.example)
+├── pyproject.toml                     # 📦 Empaquetado + deps + config de pytest/ruff
 └── requirements.txt                   # 📦 Dependencias Python
 ```
+
+> **Nota de migración:** el punto de entrada ahora es `app.main:app`. El módulo
+> `api/main.py` se mantiene como shim para que `gunicorn api.main:app` siga
+> funcionando; se recomienda migrar el servicio systemd a `app.main:app`.
 
 ---
 

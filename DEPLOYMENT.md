@@ -26,7 +26,7 @@ Environment="PATH=/home/www/Bots_Langchain/.venv/bin"
 ExecStart=/home/www/Bots_Langchain/.venv/bin/gunicorn \
     -w 4 \
     -k uvicorn.workers.UvicornWorker \
-    api.main:app \
+    app.main:app \
     --bind 127.0.0.1:8001 \
     --timeout 300
 
@@ -34,7 +34,10 @@ ExecStart=/home/www/Bots_Langchain/.venv/bin/gunicorn \
 WantedBy=multi-user.target
 ```
 
-**Nota:** Se usa `api.main` porque el archivo está en `api/main.py`.
+**Nota (migración de estructura):** el punto de entrada es ahora `app.main:app`
+(el código vive en el paquete `app/`). El módulo `api/main.py` se mantiene como
+shim de compatibilidad, por lo que `api.main:app` también funciona; se recomienda
+actualizar el `ExecStart` a `app.main:app` como arriba.
 
 ### 2. Configuración de Nginx
 
@@ -168,12 +171,17 @@ curl https://bots.tech-energy.lat/health
 /home/www/Bots_Langchain/
 ├── .env                    # Variables de entorno
 ├── .venv/                  # Entorno virtual
-├── api/
-│   ├── main.py            # ← Punto de entrada FastAPI
-│   ├── routes/
-│   └── models/
-├── bots/
+├── app/                    # ← Paquete de la aplicación
+│   ├── main.py            # ← Punto de entrada FastAPI (app.main:app)
+│   ├── core/              #    config, logging, security
+│   ├── api/v1/endpoints/  #    rutas
+│   ├── schemas/           #    modelos Pydantic
+│   ├── services/          #    lógica RAG (antes en bots/)
+│   └── clients/           #    integraciones externas
+├── api/main.py             # shim de compatibilidad (api.main:app)
+├── tests/                  # unit/ + integration/
 ├── chroma_db/
+├── pyproject.toml
 └── requirements.txt
 ```
 
