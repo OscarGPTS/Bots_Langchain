@@ -41,8 +41,14 @@ CHROMA_DB_PATH = settings.CHROMA_DB_PATH
 CHUNK_SIZE = settings.CHUNK_SIZE
 CHUNK_OVERLAP = settings.CHUNK_OVERLAP
 
-# Flag para usar IA local o cloud
+# Flag para usar IA local o cloud (gobierna EMBEDDINGS y colección)
 LOCALIA = settings.LOCALIA
+
+# Proveedor del LLM de chat: ollama | openai | opencode
+LLM_PROVIDER = settings.chat_llm_provider
+OPENCODE_BASE_URL = settings.OPENCODE_BASE_URL
+OPENCODE_API_KEY = settings.OPENCODE_API_KEY
+OPENCODE_MODEL = settings.OPENCODE_MODEL
 
 
 class BotDocumentosAvanzado:
@@ -147,11 +153,11 @@ class BotDocumentosAvanzado:
             raise
     
     def _inicializar_modelos_ia(self):
-        """Inicializar modelos de IA según configuración"""
-        print(f"\n🤖 Inicializando modelos de IA...")
-        
+        """Inicializar modelos de IA del chat según LLM_PROVIDER."""
+        print(f"\n🤖 Inicializando modelos de IA (proveedor={LLM_PROVIDER})...")
+
         try:
-            if LOCALIA:
+            if LLM_PROVIDER == "ollama":
                 # Usar Ollama local (mismo modelo para ambos)
                 self.llm_rapido = ChatOllama(
                     model=OLLAMA_MODEL,
@@ -164,19 +170,42 @@ class BotDocumentosAvanzado:
                     temperature=0.5
                 )
                 print(f"✅ Modelos Ollama ({OLLAMA_MODEL}) inicializados")
-            
+
+            elif LLM_PROVIDER == "opencode":
+                # Gateway de OpenCode Go (compatible con la API de OpenAI)
+                if not OPENCODE_BASE_URL or not OPENCODE_API_KEY or not OPENCODE_MODEL:
+                    raise ValueError(
+                        "OpenCode requiere OPENCODE_BASE_URL, OPENCODE_API_KEY y OPENCODE_MODEL en .env"
+                    )
+
+                # Mismo modelo para ambos modos (la mayoría de gateways no soportan
+                # reasoning_effort; se omite para evitar errores de parámetros).
+                self.llm_rapido = ChatOpenAI(
+                    model=OPENCODE_MODEL,
+                    temperature=0.2,
+                    openai_api_key=OPENCODE_API_KEY,
+                    base_url=OPENCODE_BASE_URL,
+                )
+                self.llm_razonamiento = ChatOpenAI(
+                    model=OPENCODE_MODEL,
+                    temperature=0.5,
+                    openai_api_key=OPENCODE_API_KEY,
+                    base_url=OPENCODE_BASE_URL,
+                )
+                print(f"✅ Modelos OpenCode ({OPENCODE_MODEL}) inicializados vía gateway")
+
             else:
                 # Usar OpenAI con dos modelos diferentes
                 if not OPENAI_API_KEY:
                     raise ValueError("OPENAI_API_KEY no configurada en .env")
-                
+
                 # Modelo rápido para consultas simples
                 self.llm_rapido = ChatOpenAI(
                     model=OPENAI_MODEL_RAPIDO,
                     temperature=0.2,
                     openai_api_key=OPENAI_API_KEY
                 )
-                
+
                 # Modelo con razonamiento para análisis complejos
                 self.llm_razonamiento = ChatOpenAI(
                     model=OPENAI_MODEL_RAZONAMIENTO,
@@ -186,11 +215,11 @@ class BotDocumentosAvanzado:
                         "reasoning_effort": "medium"  # GPT-5 reasoning
                     }
                 )
-                
+
                 print(f"✅ Modelos OpenAI inicializados:")
                 print(f"   - Rápido: {OPENAI_MODEL_RAPIDO}")
                 print(f"   - Razonamiento: {OPENAI_MODEL_RAZONAMIENTO}")
-        
+
         except Exception as e:
             print(f"❌ Error al inicializar modelos IA: {e}")
             raise

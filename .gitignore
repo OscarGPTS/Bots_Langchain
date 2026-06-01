@@ -25,6 +25,9 @@ data/
 # ChromaDB - Base de datos vectorial
 chroma_db/
 
+# Modelos de voz (Piper .onnx, etc.) - se descargan, no se versionan
+models/
+
 # IDEs
 .vscode/
 .idea/

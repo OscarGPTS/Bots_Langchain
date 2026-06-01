@@ -21,8 +21,13 @@ python-dotenv>=1.0.0
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 gunicorn>=21.0.0
+python-multipart>=0.0.9
 pydantic>=2.5.0
 pydantic-settings>=2.0.0
+
+# Voz (STT/TTS local) - requiere ffmpeg en el sistema
+faster-whisper>=1.0.0
+piper-tts>=1.2.0
 
 # Modelos de lenguaje
 openai>=1.12.0

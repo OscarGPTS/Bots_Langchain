@@ -556,6 +556,61 @@ curl -X GET "https://bots.tech-energy.lat/api/v1/bot-avanzado/recent-documents?l
 
 ---
 
+## 🎙️ Servicio de Voz
+
+Base URL: `/api/v1/voz`
+
+STT/TTS **local** (faster-whisper + Piper). Requiere `VOICE_ENABLED=true`, `ffmpeg`
+instalado y los modelos descargados (`python scripts/descargar_modelos_voz.py`).
+
+### 1. Consulta por voz
+
+**Endpoint:** `POST /api/v1/voz/consulta`
+
+**Descripción:** Recibe audio, lo transcribe, consulta el RAG y responde en texto y/o voz.
+
+**Request:** `multipart/form-data`
+- `file` (requerido): archivo de audio (`webm`, `wav`, `mp3`, `ogg`, `m4a`)
+- `formato_respuesta` (opcional): `texto` | `audio` | `ambos` (default `ambos`)
+
+```bash
+curl -X POST "https://bots.tech-energy.lat/api/v1/voz/consulta" \
+  -F "file=@pregunta.wav" \
+  -F "formato_respuesta=ambos"
+```
+
+**Response según `formato_respuesta`:**
+- `texto` → JSON:
+  ```json
+  {
+    "pregunta_transcrita": "¿cuál es el horario de trabajo?",
+    "respuesta": "El horario es de lunes a viernes de 8 a 17h...",
+    "tiempo_respuesta": 4.2
+  }
+  ```
+- `audio` → `audio/wav` (header `X-Pregunta-Transcrita`)
+- `ambos` → JSON con `respuesta` (texto) + `audio_base64` (WAV en base64)
+
+**Códigos:** `503` si el módulo está deshabilitado o faltan dependencias; `413` audio muy grande; `422` audio vacío/ininteligible.
+
+### 2. Health del módulo de voz
+
+**Endpoint:** `GET /api/v1/voz/health`
+
+```json
+{
+  "voice_enabled": true,
+  "ffmpeg_disponible": true,
+  "faster_whisper_disponible": true,
+  "piper_disponible": true,
+  "voz_piper_existe": true,
+  "backend_rag": "simple",
+  "whisper_model": "small"
+}
+```
+
+---
+
 ## 📋 Esquemas de Datos Completos
 
 ### DocumentoPaperless

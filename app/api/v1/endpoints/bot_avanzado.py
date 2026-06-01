@@ -191,8 +191,22 @@ async def get_stats(
     - Auditoría de documentos indexados
     """
     try:
-        # Obtener modo
-        modo = "local (Ollama)" if settings.LOCALIA else "cloud (OpenAI)"
+        # Proveedor de chat efectivo (ollama | openai | opencode)
+        proveedor = settings.chat_llm_provider
+        modo_map = {
+            "ollama": "local (Ollama)",
+            "openai": "cloud (OpenAI)",
+            "opencode": "cloud (OpenCode)",
+        }
+        modo = modo_map.get(proveedor, proveedor)
+
+        if proveedor == "ollama":
+            modelo_rapido = modelo_razonamiento = settings.OLLAMA_MODEL
+        elif proveedor == "opencode":
+            modelo_rapido = modelo_razonamiento = settings.OPENCODE_MODEL or "opencode"
+        else:
+            modelo_rapido = settings.OPENAI_MODEL_RAPIDO
+            modelo_razonamiento = settings.OPENAI_MODEL_RAZONAMIENTO
 
         # Contar vectores
         total_vectores = 0
@@ -211,8 +225,8 @@ async def get_stats(
             total_documentos=len(bot.documentos_indexados),
             total_vectores=total_vectores,
             modo=modo,
-            modelo_rapido=settings.OLLAMA_MODEL if settings.LOCALIA else settings.OPENAI_MODEL_RAPIDO,
-            modelo_razonamiento=settings.OLLAMA_MODEL if settings.LOCALIA else settings.OPENAI_MODEL_RAZONAMIENTO,
+            modelo_rapido=modelo_rapido,
+            modelo_razonamiento=modelo_razonamiento,
             documentos_indexados=docs_indexados
         )
     

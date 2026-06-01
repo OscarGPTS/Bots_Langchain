@@ -8,6 +8,14 @@ import sys
 
 def setup_logging(level: int = logging.INFO) -> None:
     """Configurar el logging raíz una sola vez."""
+    # En Windows la consola usa cp1252 y los print() con emojis de los servicios
+    # provocan UnicodeEncodeError. Forzar UTF-8 (no-op en Linux/producción).
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     root = logging.getLogger()
     if root.handlers:
         return  # ya configurado (p.ej. por gunicorn)

@@ -354,3 +354,29 @@ class ReindexarResponse(BaseModel):
     documentos_nuevos: int
     documentos_actualizados: int
     tiempo_total: float
+
+
+class VozTextoResponse(BaseModel):
+    """Response de consulta por voz (formato_respuesta=texto)."""
+    pregunta_transcrita: str = Field(..., description="Texto transcrito del audio de entrada")
+    respuesta: str = Field(..., description="Respuesta generada por el RAG")
+    tiempo_respuesta: float = Field(..., description="Tiempo total en segundos (STT + RAG)")
+
+
+class VozResponse(BaseModel):
+    """Response de consulta por voz (formato_respuesta=ambos): texto + audio en base64."""
+    pregunta_transcrita: str = Field(..., description="Texto transcrito del audio de entrada")
+    respuesta: str = Field(..., description="Respuesta generada por el RAG")
+    audio_base64: Optional[str] = Field(None, description="Audio WAV de la respuesta en base64")
+    tiempo_respuesta: float = Field(..., description="Tiempo total en segundos (STT + RAG + TTS)")
+
+
+class VozHealthResponse(BaseModel):
+    """Estado de los componentes del módulo de voz."""
+    voice_enabled: bool
+    ffmpeg_disponible: bool
+    faster_whisper_disponible: bool
+    piper_disponible: bool
+    voz_piper_existe: bool
+    backend_rag: str
+    whisper_model: str

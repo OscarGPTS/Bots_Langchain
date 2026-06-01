@@ -33,7 +33,20 @@ class Settings(BaseSettings):
     OPENAI_MODEL_RAZONAMIENTO: str = "gpt-4o"
 
     # true = Ollama (local, sin costo); false = OpenAI (cloud)
+    # Nota: controla los EMBEDDINGS y la colección de ChromaDB. El modelo de chat
+    # se elige con LLM_PROVIDER (ver abajo). Para usar OpenCode con embeddings
+    # locales, mantener LOCALIA=true y LLM_PROVIDER=opencode.
     LOCALIA: bool = True
+
+    # ===== Proveedor del LLM de chat (etapa de respuesta del RAG) =====
+    # "auto" => deriva de LOCALIA (ollama si true, openai si false).
+    # "ollama" | "openai" | "opencode".
+    LLM_PROVIDER: str = "auto"
+
+    # OpenCode Go (gateway compatible con la API de OpenAI)
+    OPENCODE_BASE_URL: Optional[str] = None
+    OPENCODE_API_KEY: Optional[str] = None
+    OPENCODE_MODEL: Optional[str] = None
 
     # ===== ChromaDB =====
     CHROMA_DB_PATH: str = "./chroma_db"
@@ -51,6 +64,20 @@ class Settings(BaseSettings):
 
     # ===== Base de datos SQLite (opcional) =====
     DATABASE_PATH: str = "data/empresa.db"
+
+    # ===== Voz (STT + TTS) =====
+    VOICE_ENABLED: bool = False
+    VOICE_BACKEND: str = "simple"          # qué bot RAG usa la voz: simple | avanzado
+    # STT (voz -> texto)
+    STT_PROVIDER: str = "local"            # local (faster-whisper) | openai
+    WHISPER_MODEL: str = "small"           # tiny|base|small|medium|large-v3
+    WHISPER_DEVICE: str = "cpu"            # cpu | cuda
+    WHISPER_COMPUTE_TYPE: str = "int8"     # int8 (cpu) | float16 (gpu)
+    STT_LANGUAGE: str = "es"
+    VOICE_MAX_SECONDS: int = 60            # duración máxima de audio aceptada
+    # TTS (texto -> voz)
+    TTS_PROVIDER: str = "local"            # local (Piper) | openai
+    PIPER_VOICE_PATH: str = "models/piper/es_MX.onnx"
 
     # ===== Seguridad / operación =====
     # Token requerido para operaciones administrativas (p.ej. /reindexar).
@@ -70,6 +97,14 @@ class Settings(BaseSettings):
     def cors_allow_credentials(self) -> bool:
         # No se pueden usar credenciales con comodín de orígenes.
         return self.cors_origins_list != ["*"]
+
+    @property
+    def chat_llm_provider(self) -> str:
+        """Proveedor efectivo del LLM de chat: ollama | openai | opencode."""
+        provider = (self.LLM_PROVIDER or "auto").lower()
+        if provider == "auto":
+            return "ollama" if self.LOCALIA else "openai"
+        return provider
 
 
 @lru_cache
