@@ -75,9 +75,12 @@ class Settings(BaseSettings):
     WHISPER_COMPUTE_TYPE: str = "int8"     # int8 (cpu) | float16 (gpu)
     STT_LANGUAGE: str = "es"
     VOICE_MAX_SECONDS: int = 60            # duración máxima de audio aceptada
+    OPENAI_STT_MODEL: str = "whisper-1"    # whisper-1 | gpt-4o-transcribe | gpt-4o-mini-transcribe
     # TTS (texto -> voz)
     TTS_PROVIDER: str = "local"            # local (Piper) | openai
     PIPER_VOICE_PATH: str = "models/piper/es_MX.onnx"
+    OPENAI_TTS_MODEL: str = "tts-1"        # tts-1 | tts-1-hd | gpt-4o-mini-tts
+    OPENAI_TTS_VOICE: str = "nova"         # voz OpenAI (nova/shimmer/coral = femeninas)
 
     # ===== Seguridad / operación =====
     # Token requerido para operaciones administrativas (p.ej. /reindexar).

@@ -374,9 +374,12 @@ class VozResponse(BaseModel):
 class VozHealthResponse(BaseModel):
     """Estado de los componentes del módulo de voz."""
     voice_enabled: bool
+    stt_provider: str
+    tts_provider: str
     ffmpeg_disponible: bool
     faster_whisper_disponible: bool
     piper_disponible: bool
     voz_piper_existe: bool
+    openai_disponible: bool
     backend_rag: str
     whisper_model: str

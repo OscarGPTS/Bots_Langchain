@@ -65,10 +65,13 @@ def estado() -> dict:
     """Estado de los componentes de voz (para health)."""
     return {
         "voice_enabled": settings.VOICE_ENABLED,
+        "stt_provider": settings.STT_PROVIDER,
+        "tts_provider": settings.TTS_PROVIDER,
         "ffmpeg_disponible": stt.ffmpeg_disponible(),
         "faster_whisper_disponible": stt.faster_whisper_disponible(),
         "piper_disponible": tts.piper_disponible(),
         "voz_piper_existe": tts.voz_existe(),
+        "openai_disponible": stt.openai_disponible(),
         "backend_rag": settings.VOICE_BACKEND,
         "whisper_model": settings.WHISPER_MODEL,
     }

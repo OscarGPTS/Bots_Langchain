@@ -43,6 +43,16 @@ def faster_whisper_disponible() -> bool:
         return False
 
 
+def openai_disponible() -> bool:
+    if not settings.OPENAI_API_KEY:
+        return False
+    try:
+        import openai  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 def _get_model():
     """Cargar (una vez) el modelo faster-whisper."""
     global _model
@@ -80,7 +90,14 @@ def _normalizar_a_wav(origen: str) -> str:
 
 
 def transcribir(audio_bytes: bytes, sufijo: str = ".bin") -> str:
-    """Transcribir audio a texto. Devuelve la transcripción en texto plano."""
+    """Transcribir audio a texto según STT_PROVIDER (local | openai)."""
+    if settings.STT_PROVIDER == "openai":
+        return _transcribir_openai(audio_bytes, sufijo)
+    return _transcribir_local(audio_bytes, sufijo)
+
+
+def _transcribir_local(audio_bytes: bytes, sufijo: str) -> str:
+    """STT con faster-whisper (local)."""
     if not faster_whisper_disponible():
         raise RuntimeError("faster-whisper no está instalado (pip install faster-whisper).")
     if not ffmpeg_disponible():
@@ -106,3 +123,35 @@ def transcribir(audio_bytes: bytes, sufijo: str = ".bin") -> str:
                     os.remove(p)
                 except OSError:
                     pass
+
+
+def _transcribir_openai(audio_bytes: bytes, sufijo: str) -> str:
+    """STT con la API de OpenAI (whisper-1 / gpt-4o-transcribe).
+
+    No requiere ffmpeg: OpenAI acepta webm/mp3/wav/m4a directamente.
+    """
+    if not openai_disponible():
+        raise RuntimeError("OpenAI no disponible (falta OPENAI_API_KEY o paquete openai).")
+
+    from openai import OpenAI
+
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    tmp_in = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=sufijo or ".webm") as f:
+            f.write(audio_bytes)
+            tmp_in = f.name
+
+        with open(tmp_in, "rb") as audio_file:
+            resp = client.audio.transcriptions.create(
+                model=settings.OPENAI_STT_MODEL,
+                file=audio_file,
+                language=settings.STT_LANGUAGE,
+            )
+        return (resp.text or "").strip()
+    finally:
+        if tmp_in and os.path.exists(tmp_in):
+            try:
+                os.remove(tmp_in)
+            except OSError:
+                pass
