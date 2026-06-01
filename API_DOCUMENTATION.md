@@ -215,11 +215,14 @@ Los campos `download_url`, `preview_url` y `thumbnail_url` permiten acceso direc
 - **preview_url**: Visualización del documento en navegador (ideal para iframes)
 - **thumbnail_url**: Miniatura del documento (ideal para listados/grids)
 
-⚠️ **Importante**: Estas URLs requieren autenticación con el token de Paperless. En el frontend, debes incluir el header:
-```javascript
-headers: {
-  'Authorization': 'Token YOUR_PAPERLESS_TOKEN'
-}
+✅ **Importante**: Las URLs ya incluyen el token de autenticación como query parameter (`?token=XXX`), por lo que:
+- **Puedes abrirlas directamente** en el navegador o en un `<iframe>` sin configuración adicional
+- **No necesitas agregar headers** de autenticación en el frontend
+- Las URLs son privadas y contienen el token - no las expongas públicamente
+
+Ejemplo de URL generada:
+```
+https://paperless.tech-energy.lat/api/documents/1/preview/?token=abc123def456
 ```
 
 ---
@@ -568,9 +571,9 @@ curl -X GET "https://bots.tech-energy.lat/api/v1/bot-avanzado/recent-documents?l
   "correspondent": null,
   "document_type": 1,
   "tags": [1, 2, 3],
-  "download_url": "https://paperless.tech-energy.lat/api/documents/1/download/",
-  "preview_url": "https://paperless.tech-energy.lat/api/documents/1/preview/",
-  "thumbnail_url": "https://paperless.tech-energy.lat/api/documents/1/thumb/"
+  "download_url": "https://paperless.tech-energy.lat/api/documents/1/download/?token=abc123",
+  "preview_url": "https://paperless.tech-energy.lat/api/documents/1/preview/?token=abc123",
+  "thumbnail_url": "https://paperless.tech-energy.lat/api/documents/1/thumb/?token=abc123"
 }
 ```
 
@@ -762,7 +765,7 @@ Si algún servicio está caído, los endpoints afectados retornarán error 503.
 
 ## 📎 Uso de URLs de Documentos en Frontend
 
-Los endpoints de documentos ahora incluyen URLs listas para usar en aplicaciones frontend:
+Los endpoints de documentos ahora incluyen URLs listas para usar en aplicaciones frontend **con autenticación integrada**.
 
 ### Campos de URL Disponibles
 
@@ -771,12 +774,20 @@ Cada objeto `DocumentoPaperless` incluye:
 - **`preview_url`**: Vista previa del documento (PDF renderizado)
 - **`thumbnail_url`**: Miniatura para listas o galerías
 
-### Autenticación Requerida
+### ✅ Autenticación Incluida
 
-**Importante**: Todas las URLs requieren el header de autenticación de Paperless:
+**Las URLs ya contienen el token de autenticación** como query parameter (`?token=XXX`), por lo que:
 
-```javascript
-Authorization: Token YOUR_PAPERLESS_TOKEN
+- ✅ Puedes usarlas directamente en `<img>`, `<iframe>`, o `<a>` sin configuración adicional
+- ✅ No necesitas agregar headers custom en JavaScript
+- ✅ Funcionan inmediatamente al abrirse en el navegador
+- ⚠️ **Importante**: No compartas estas URLs públicamente (contienen tu token de acceso)
+
+Ejemplo de URL generada:
+```
+https://paperless.tech-energy.lat/api/documents/1/preview/?token=abc123def456
+                                                           ^^^^^^^^^^^^^^^^^^^
+                                                           Token incluido automáticamente
 ```
 
 ### Ejemplos de Uso
@@ -797,98 +808,107 @@ Authorization: Token YOUR_PAPERLESS_TOKEN
 </div>
 ```
 
-#### 2. Botón de Descarga con Fetch
+**✅ Funciona directamente - el token ya está en la URL**
 
-```javascript
-async function descargarDocumento(downloadUrl, filename) {
-  const response = await fetch(downloadUrl, {
-    headers: {
-      'Authorization': `Token ${PAPERLESS_TOKEN}`
-    }
-  });
-  
-  const blob = await response.blob();
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  window.URL.revokeObjectURL(url);
-}
+#### 2. Botón de Descarga Directo
+
+```html
+<a href="${documento.download_url}" download="${documento.title}">
+  <button>📥 Descargar Documento</button>
+</a>
 ```
+
+**✅ Sin JavaScript necesario - funciona como un link normal**
 
 #### 3. Preview en Modal/Iframe
 
 ```html
 <div class="modal">
   <iframe 
-    id="document-preview"
-    src="" 
+    src="${documento.preview_url}" 
     style="width: 100%; height: 600px;"
+    title="Vista previa del documento"
   ></iframe>
 </div>
-
-<script>
-function mostrarPreview(previewUrl) {
-  // Nota: iframes tienen limitaciones con headers custom
-  // Mejor usar fetch + blob para mayor control
-  fetch(previewUrl, {
-    headers: { 'Authorization': `Token ${PAPERLESS_TOKEN}` }
-  })
-  .then(res => res.blob())
-  .then(blob => {
-    const url = URL.createObjectURL(blob);
-    document.getElementById('document-preview').src = url;
-  });
-}
-</script>
 ```
 
-#### 4. React Component Ejemplo
+**✅ El iframe carga directamente sin configuración adicional**
+
+#### 4. React Component Simplificado
 
 ```jsx
 function DocumentCard({ documento }) {
-  const [previewUrl, setPreviewUrl] = useState(null);
-  
-  const loadPreview = async () => {
-    const response = await fetch(documento.preview_url, {
-      headers: { 'Authorization': `Token ${process.env.PAPERLESS_TOKEN}` }
-    });
-    const blob = await response.blob();
-    setPreviewUrl(URL.createObjectURL(blob));
-  };
+  const [showPreview, setShowPreview] = useState(false);
   
   return (
     <div className="card">
       <img src={documento.thumbnail_url} alt={documento.title} />
       <h3>{documento.title}</h3>
-      <button onClick={loadPreview}>Ver Preview</button>
-      <a href={documento.download_url} download>Descargar</a>
       
-      {previewUrl && <iframe src={previewUrl} />}
+      <button onClick={() => setShowPreview(true)}>
+        👁️ Ver Preview
+      </button>
+      
+      <a href={documento.download_url} download>
+        📥 Descargar
+      </a>
+      
+      {showPreview && (
+        <div className="modal">
+          <iframe src={documento.preview_url} />
+          <button onClick={() => setShowPreview(false)}>Cerrar</button>
+        </div>
+      )}
     </div>
   );
 }
 ```
+
+**✅ Sin necesidad de fetch() ni manejo de blobs**
 
 ### Manejo de Errores
 
 ```javascript
 // Verificar si las URLs están disponibles
 if (documento.download_url) {
-  // URL disponible - mostrar botón de descarga
+  // URL disponible y lista para usar
+  console.log('Documento disponible para descarga');
 } else {
-  // PAPERLESS_URL no configurado o documento sin ID
-  console.warn('URL de documento no disponible');
+  // PAPERLESS_URL o PAPERLESS_TOKEN no configurado
+  console.warn('URL de documento no disponible - configuración incompleta');
 }
+
+// Manejo de errores de carga de imagen
+<img 
+  src={documento.thumbnail_url}
+  onError={(e) => {
+    e.target.src = '/placeholder.png';
+    console.error('Error cargando miniatura');
+  }}
+/>
 ```
 
-### Consideraciones
+### Consideraciones de Seguridad
 
-1. **CORS**: Asegúrate de que Paperless-ngx tenga CORS configurado para tu dominio frontend
-2. **Seguridad**: Nunca expongas el `PAPERLESS_TOKEN` en el frontend - usa un proxy backend
-3. **Performance**: Las miniaturas son más ligeras que previews completos - úsalas en listas
-4. **Caché**: Considera cachear blobs de documentos para evitar descargas repetidas
+1. **URLs Privadas**: Las URLs contienen el token de autenticación - **no las expongas en repositorios públicos o logs**
+2. **HTTPS**: Siempre usa HTTPS en producción para proteger el token en tránsito
+3. **Rotación de Token**: Si cambias el `PAPERLESS_TOKEN`, todas las URLs anteriores dejarán de funcionar
+4. **Caducidad**: Las URLs son válidas mientras el token esté activo (Paperless no caduca tokens por defecto)
+5. **Compartir**: Si necesitas compartir un documento, considera crear un endpoint proxy en tu backend que valide permisos
+
+### Ventajas del Enfoque Actual
+
+✅ **Simplicidad**: No necesitas manejar autenticación en el frontend  
+✅ **Compatibilidad**: Funciona con cualquier elemento HTML (`<img>`, `<iframe>`, `<a>`)  
+✅ **Performance**: El navegador puede cachear las imágenes/documentos automáticamente  
+✅ **Less Code**: No necesitas fetch(), blobs, ni manejo manual de headers
+
+### Consideraciones Técnicas
+
+1. **CORS**: No es necesario configurar CORS si usas las URLs directamente en HTML
+2. **Caché del Navegador**: Las URLs con query parameters se cachean - considera esto para documentos que cambian frecuentemente
+3. **Tamaño de URLs**: Los tokens pueden ser largos - verifica límites si usas URLs en bases de datos
+4. **Logging**: Ten cuidado con logs que puedan exponer las URLs completas (con token)
 
 ---
 

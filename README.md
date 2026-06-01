@@ -19,7 +19,7 @@ API REST construida con **FastAPI** para consultas inteligentes de documentos us
 - [Configuración](#️-configuración)
 - [Estructura del Proyecto](#-estructura-del-proyecto)
 - [Endpoints de la API](#-endpoints-de-la-api)
-- [Cómo Ejecutar](#-cómo-ejecutar)
+- [Cómo Ejecutar](#️-cómo-ejecutar)
 - [Validar Funcionamiento](#-validar-funcionamiento)
 - [Ejemplos de Uso](#-ejemplos-de-uso)
 - [Despliegue en Producción](#-despliegue-en-producción)
@@ -81,20 +81,26 @@ python scripts/iniciar_api.py
 
 ### 🤖 Bots Inteligentes
 
-**Bot Simple** (`/api/v1/bot-simple`)
+**Bot Simple** (`/api/v1/bot-simple`) — `bots/bot_documentos.py`
 - 🗄️ ChromaDB local + Ollama (phi4-mini:latest)
 - ⚡ Búsqueda vectorial sin costos de API
-- 📄 87 vectores indexados
 - 🔍 5 endpoints: query, analyze-document, documents, recent-documents, health
 
-**Bot Avanzado** (`/api/v1/bot-avanzado`)
-- ☁️ ChromaDB + OpenAI (gpt-5-nano)
+**Bot Avanzado** (`/api/v1/bot-avanzado`) — `bots/bot_documentos_avanzado.py`
+- ☁️ ChromaDB + OpenAI (gpt-4o / gpt-4o-mini) o Ollama (configurable con `LOCALIA`)
 - 🧠 Modo rápido: 3 chunks, respuestas directas
-- 🤔 Modo razonamiento: 10-20 chunks, análisis profundo
-- 🔎 Búsqueda semántica pura (sin LLM)
-- 📊 116 vectores, estadísticas, reindexación
-- 💰 Monitor de costos y tokens
+- 🤔 Modo razonamiento: hasta 20 chunks, análisis profundo con reasoning
+- 🔎 Búsqueda semántica pura (similitud coseno, sin LLM)
+- 💰 Monitor de costos y tokens (solo OpenAI)
 - 📈 8 endpoints completos
+
+**Bot RH** — `bots/bot_rh.py` *(uso interno / scripts)*
+- 👥 Consultas especializadas a la API de Recursos Humanos
+- 🤖 Ollama para respuestas en lenguaje natural sobre empleados
+
+**Bot General** — `bots/bot_general.py` *(uso interno / scripts)*
+- 🔗 Combina datos de RH + documentos de Paperless en una sola consulta
+- 🤖 Ollama para respuestas integradas entre ambas fuentes
 
 ### 🛠️ Stack Tecnológico
 - **API**: FastAPI + Uvicorn + Gunicorn (producción)
@@ -277,12 +283,23 @@ OLLAMA_URL=https://ollama.tudominio.com
 OLLAMA_MODEL=phi4-mini:latest
 
 # ===== OpenAI (Cloud - Opcional) =====
-LOCALIA=false  # true = Ollama, false = OpenAI
-OPENAI_API_KEY=sk-...
+LOCALIA=false              # true = usar Ollama (local, sin costo), false = usar OpenAI (cloud)
+OPENAI_API_KEY=sk-...      # Solo necesario si LOCALIA=false
+
+# ===== Modelos OpenAI (Bot Avanzado) =====
+OPENAI_MODEL_RAPIDO=gpt-4o-mini          # Modelo para /consulta-rapida (rápido y económico)
+OPENAI_MODEL_RAZONAMIENTO=gpt-4o         # Modelo para /razonamiento-profundo (más potente)
 
 # ===== ChromaDB =====
-CHROMA_DB_PATH=./chroma_db
+CHROMA_DB_PATH=./chroma_db  # Ruta donde se persisten los vectores
+CHUNK_SIZE=1000             # Tamaño de fragmentos de texto al indexar (caracteres)
+CHUNK_OVERLAP=150           # Superposición entre chunks (para no perder contexto)
+
+# ===== API de RH (Opcional - para bot_rh y bot_general) =====
+API_RH_URL=https://rh.tudominio.com      # URL de la API de Recursos Humanos
 ```
+
+> **Nota sobre `LOCALIA`:** Cuando `LOCALIA=true` (Ollama), los modelos `OPENAI_MODEL_*` se ignoran y se usa `OLLAMA_MODEL` en su lugar. El flag afecta a ambos bots (simple y avanzado).
 
 ### Obtener Token de Paperless
 
@@ -306,23 +323,47 @@ python utils/verificar_ollama.py
 
 ```
 langchain/
-├── api/                        # 🌐 API REST
-│   ├── main.py                 #    App FastAPI principal
-│   ├── dependencies.py         #    Singletons de bots
+├── api/                               # 🌐 API REST
+│   ├── main.py                        #    App FastAPI principal
+│   ├── dependencies.py                #    Singletons de bots (patrón singleton)
+│   ├── main_docs.py                   #    Versión alternativa de la app
 │   ├── models/
-│   │   └── schemas.py          #    Modelos Pydantic
+│   │   └── schemas.py                 #    Modelos Pydantic (requests/responses)
 │   └── routes/
-│       ├── bot_simple.py       #    5 endpoints bot simple
-│       └── bot_avanzado.py     #    8 endpoints bot avanzado
-├── bot_documentos.py           # 🤖 Bot Simple (Ollama)
-├── bot_documentos_avanzado.py  # 🚀 Bot Avanzado (OpenAI)
+│       ├── bot_simple.py              #    5 endpoints bot simple
+│       └── bot_avanzado.py            #    8 endpoints bot avanzado
+├── bots/                              # 🤖 Implementaciones de bots
+│   ├── bot_documentos.py              #    Bot Simple (ChromaDB + Ollama)
+│   ├── bot_documentos_avanzado.py     #    Bot Avanzado (ChromaDB + OpenAI/Ollama)
+│   ├── bot_general.py                 #    Bot General (RH + Paperless, uso interno)
+│   └── bot_rh.py                      #    Bot de Recursos Humanos (uso interno)
 ├── scripts/
-│   ├── iniciar_api.py          # ▶️ Iniciar API
-│   ├── test_api_cliente.py     # 🧪 Tests completos
-│   └── test_api_imports.py     # ✅ Validar imports
-├── chroma_db/                  # 📊 Base de datos vectorial
-├── .env                        # 🔐 Configuración (crear)
-└── requirements.txt            # 📦 Dependencias
+│   ├── iniciar_api.py                 # ▶️  Iniciar API (desarrollo)
+│   ├── test_api_cliente.py            # 🧪 Tests completos de todos los endpoints
+│   ├── test_api_imports.py            # ✅ Validar que los imports funcionan
+│   ├── indexar_docs_simple.py         # 📥 Forzar reindexación en colección simple
+│   ├── instalar_bot_avanzado.py       # 📦 Instalar dependencias del bot avanzado
+│   ├── crear_db_ejemplo.py            # 🗄️  Crear base de datos de ejemplo
+│   ├── debug_busqueda.py              # 🔍 Depurar búsquedas en ChromaDB
+│   ├── inspeccionar_chromadb.py       # 🔎 Inspeccionar colecciones de ChromaDB
+│   ├── generar_token_paperless.py     # 🔑 Generar token de acceso a Paperless
+│   ├── probar_paperless.py            # 🌐 Probar conexión con Paperless
+│   ├── probar_bot_avanzado.py         # 🧪 Test del bot avanzado directamente
+│   ├── probar_bot_documentos.py       # 🧪 Test del bot simple directamente
+│   ├── probar_api_rh.py               # 🧪 Test de la API de RH
+│   ├── prueba_bot_simple.py           # 🧪 Prueba rápida del bot simple
+│   ├── prueba_simple_bot_avanzado.py  # 🧪 Prueba rápida del bot avanzado
+│   ├── test_casos_reales.py           # 🧪 Test con casos de uso reales
+│   ├── test_problema.py               # 🧪 Test de escenarios problemáticos
+│   ├── test_realista.py               # 🧪 Test con datos realistas
+│   ├── test_simple.py                 # 🧪 Test unitario simple
+│   └── validacion_final.py            # ✅ Validación final antes de despliegue
+├── utils/
+│   └── verificar_ollama.py            # 🔍 Verificar modelos Ollama disponibles
+├── chroma_db/                         # 📊 Base de datos vectorial (persistente)
+├── data/                              # 📁 Datos locales (documentos de ejemplo)
+├── .env                               # 🔐 Configuración (crear desde .env.example)
+└── requirements.txt                   # 📦 Dependencias Python
 ```
 
 ---
@@ -352,10 +393,10 @@ langchain/
 }
 ```
 
-**Ejemplo Response:**
+**Ejemplo Response (POST /query):**
 ```json
 {
-  "respuesta": "El código de ética define...",
+  "respuesta": "El código de ética define la integridad como actuar con honestidad...\n\n──────────────────────────────\n📚 Documentos consultados:\n\n📄 Código de Ética y Conducta (Creado: 2026-03-10)",
   "tiempo_respuesta": 2.5
 }
 ```
@@ -372,7 +413,10 @@ langchain/
       "tags": [],
       "document_type": null,
       "correspondent": null,
-      "archive_serial_number": null
+      "archive_serial_number": null,
+      "download_url": "https://paperless.tudominio.com/api/documents/3/download/?token=abc123",
+      "preview_url": "https://paperless.tudominio.com/api/documents/3/preview/?token=abc123",
+      "thumbnail_url": "https://paperless.tudominio.com/api/documents/3/thumb/?token=abc123"
     }
   ],
   "total": 4,
@@ -380,40 +424,87 @@ langchain/
 }
 ```
 
+> **URLs de documentos:** Cada documento incluye URLs pre-autenticadas para descargar, previsualizar y obtener miniaturas directamente desde Paperless. Útiles para integración con frontends:
+> ```html
+> <img src="{thumbnail_url}" />
+> <a href="{download_url}">Descargar</a>
+> <iframe src="{preview_url}"></iframe>
+> ```
+> ⚠️ Las URLs contienen el token de acceso — no exponerlas públicamente.
+
 ### **Bot Avanzado** - `/api/v1/bot-avanzado`
 
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
-| POST | `/consulta-rapida` | Respuesta rápida (3 chunks) |
-| POST | `/razonamiento-profundo` | Análisis profundo (10-20 chunks) |
-| POST | `/busqueda-semantica` | Búsqueda vectorial sin LLM |
-| GET | `/documents` | Listar todos los documentos (JSON) |
-| GET | `/recent-documents` | Documentos recientes (JSON) |
-| GET | `/stats` | Estadísticas (docs, vectores, costos) |
-| POST | `/reindexar` | Forzar reindexación |
+| POST | `/consulta-rapida` | Respuesta rápida (3 chunks, modelo rápido) |
+| POST | `/razonamiento-profundo` | Análisis profundo (hasta 20 chunks, modelo avanzado) |
+| POST | `/busqueda-semantica` | Búsqueda vectorial sin LLM (solo similitud) |
+| GET | `/documents` | Listar todos los documentos con URLs |
+| GET | `/recent-documents` | Documentos recientes con URLs |
+| GET | `/stats` | Estadísticas (docs, vectores, costos, modo) |
+| POST | `/reindexar` | Forzar reindexación de todos los documentos |
 | GET | `/health` | Health check del bot |
 
-**Ejemplo Request (Razonamiento):**
+**Parámetro `filtros` (opcional):**
+
+| Filtro | Tipo | Ejemplo | Descripción |
+|--------|------|---------|-------------|
+| `created` | string | `"2026"` | Filtrar por año de creación |
+| `tags` | string | `"contrato"` | Filtrar por etiqueta de Paperless |
+
+**Ejemplo Request (Consulta Rápida):**
 ```json
 {
-  "pregunta": "Analiza las políticas de vacaciones",
-  "filtros": {"created": "2026"},
+  "pregunta": "¿Cuál es el horario de trabajo?",
+  "filtros": {"created": "2026"}
+}
+```
+
+**Ejemplo Request (Razonamiento Profundo):**
+```json
+{
+  "pregunta": "Analiza las políticas de vacaciones y días festivos",
+  "filtros": {"tags": "politica"},
   "k": 15
 }
 ```
 
-**Ejemplo Response:**
+**Ejemplo Response (con OpenAI):**
 ```json
 {
-  "respuesta": "Análisis detallado...",
-  "chunks_usados": 15,
+  "respuesta": "Análisis detallado de las políticas de vacaciones...",
   "estadisticas": {
-    "tokens_total": 1500,
+    "tokens_entrada": 1200,
+    "tokens_salida": 350,
+    "tokens_total": 1550,
     "costo_usd": 0.00045
   },
   "tiempo_respuesta": 12.3
 }
 ```
+
+> **Nota:** Con `LOCALIA=true` (Ollama), el campo `estadisticas` será `null` (no hay monitoreo de tokens).
+
+**Ejemplo Response (POST /busqueda-semantica):**
+```json
+{
+  "resultados": [
+    {
+      "doc_id": "3",
+      "title": "Código de Ética y Conducta",
+      "chunk_index": 5,
+      "total_chunks": 20,
+      "created": "2026-03-10",
+      "preview": "La integridad se define como actuar con honestidad...",
+      "score": 0.8734
+    }
+  ],
+  "total": 5,
+  "tiempo_respuesta": 0.45
+}
+```
+
+> **`score`:** Similitud coseno entre la consulta y el fragmento (0.0–1.0). Mayor valor = más relevante.
 
 ---
 
@@ -1701,11 +1792,26 @@ systemctl show bots-api
 ### Testing
 
 ```bash
-# Test completo
+# Test completo de todos los endpoints
 python3 scripts/test_api_cliente.py
 
-# Validar imports
+# Validar imports (sin necesidad de levantar la API)
 python3 scripts/test_api_imports.py
+
+# Test con casos de uso reales
+python3 scripts/test_casos_reales.py
+
+# Test con datos realistas
+python3 scripts/test_realista.py
+
+# Validación final (antes de despliegue)
+python3 scripts/validacion_final.py
+
+# Probar bots directamente (sin la API REST)
+python3 scripts/probar_bot_documentos.py    # Bot Simple
+python3 scripts/probar_bot_avanzado.py      # Bot Avanzado
+python3 scripts/prueba_bot_simple.py        # Prueba rápida
+python3 scripts/prueba_simple_bot_avanzado.py
 
 # Health check
 curl http://localhost:8000/health
@@ -1721,6 +1827,27 @@ curl -X POST "http://localhost:8000/api/v1/bot-simple/query" \
 
 # Listar documentos
 curl "http://localhost:8000/api/v1/bot-simple/documents?limite=5"
+```
+
+### Scripts de Utilidad
+
+```bash
+# Indexación y ChromaDB
+python3 scripts/indexar_docs_simple.py       # Forzar reindexación bot simple
+python3 scripts/inspeccionar_chromadb.py     # Inspeccionar colecciones en ChromaDB
+python3 scripts/debug_busqueda.py            # Depurar resultados de búsqueda
+python3 scripts/crear_db_ejemplo.py          # Crear base de datos de ejemplo
+
+# Instalación y verificación
+python3 scripts/instalar_bot_avanzado.py     # Instalar dependencias bot avanzado
+python3 utils/verificar_ollama.py            # Ver modelos disponibles en Ollama
+
+# Paperless
+python3 scripts/generar_token_paperless.py   # Generar/renovar token de Paperless
+python3 scripts/probar_paperless.py          # Probar conexión con Paperless
+
+# Reindexar vía API (sin detener el servidor)
+curl -X POST http://localhost:8000/api/v1/bot-avanzado/reindexar
 ```
 
 ### Diagnóstico y Monitoreo

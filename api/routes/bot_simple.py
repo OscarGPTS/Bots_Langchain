@@ -20,18 +20,23 @@ router = APIRouter(
 
 
 def _build_document_urls(doc_id: int) -> dict:
-    """Construir URLs de Paperless para un documento"""
+    """Construir URLs de Paperless para un documento con autenticación por token"""
     paperless_url = os.getenv('PAPERLESS_URL', '')
+    paperless_token = os.getenv('PAPERLESS_TOKEN', '')
+    
     if not paperless_url:
         return {"download_url": None, "preview_url": None, "thumbnail_url": None}
     
     # Remover trailing slash si existe
     paperless_url = paperless_url.rstrip('/')
     
+    # Agregar token como query parameter para autenticación directa
+    token_param = f"?token={paperless_token}" if paperless_token else ""
+    
     return {
-        "download_url": f"{paperless_url}/api/documents/{doc_id}/download/",
-        "preview_url": f"{paperless_url}/api/documents/{doc_id}/preview/",
-        "thumbnail_url": f"{paperless_url}/api/documents/{doc_id}/thumb/"
+        "download_url": f"{paperless_url}/api/documents/{doc_id}/download/{token_param}",
+        "preview_url": f"{paperless_url}/api/documents/{doc_id}/preview/{token_param}",
+        "thumbnail_url": f"{paperless_url}/api/documents/{doc_id}/thumb/{token_param}"
     }
 
 

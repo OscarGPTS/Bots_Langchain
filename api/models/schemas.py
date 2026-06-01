@@ -230,9 +230,9 @@ class DocumentoPaperless(BaseModel):
                 "correspondent": None,
                 "document_type": 1,
                 "tags": [],
-                "download_url": "https://paperless.tech-energy.lat/api/documents/1/download/",
-                "preview_url": "https://paperless.tech-energy.lat/api/documents/1/preview/",
-                "thumbnail_url": "https://paperless.tech-energy.lat/api/documents/1/thumb/"
+                "download_url": "https://paperless.tech-energy.lat/api/documents/1/download/?token=abc123",
+                "preview_url": "https://paperless.tech-energy.lat/api/documents/1/preview/?token=abc123",
+                "thumbnail_url": "https://paperless.tech-energy.lat/api/documents/1/thumb/?token=abc123"
             }
         }
 
@@ -253,9 +253,9 @@ class DocumentosListResponse(BaseModel):
                         "created": "2026-03-10",
                         "modified": "2026-03-11",
                         "tags": [],
-                        "download_url": "https://paperless.tech-energy.lat/api/documents/1/download/",
-                        "preview_url": "https://paperless.tech-energy.lat/api/documents/1/preview/",
-                        "thumbnail_url": "https://paperless.tech-energy.lat/api/documents/1/thumb/"
+                        "download_url": "https://paperless.tech-energy.lat/api/documents/1/download/?token=abc123",
+                        "preview_url": "https://paperless.tech-energy.lat/api/documents/1/preview/?token=abc123",
+                        "thumbnail_url": "https://paperless.tech-energy.lat/api/documents/1/thumb/?token=abc123"
                     }
                 ],
                 "total": 1,
@@ -266,13 +266,16 @@ class DocumentosListResponse(BaseModel):
 - **preview_url**: Mostrar preview del documento en navegador
 - **thumbnail_url**: Cargar miniatura (para listados/grids)
 
-Las URLs requieren autenticación con el token de Paperless.
-Ejemplo de uso en frontend:
+✅ Las URLs ya incluyen el token de autenticación como query parameter (?token=XXX).
+Puedes usarlas directamente sin configuración adicional:
+
 ```html
 <img src="{thumbnail_url}" />
 <a href="{download_url}">Descargar</a>
 <iframe src="{preview_url}"></iframe>
 ```
+
+⚠️ No expongas estas URLs públicamente (contienen tu token de acceso).
 """
         }
     
