@@ -3,6 +3,7 @@ import base64
 import io
 import os
 from enum import Enum
+from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -86,10 +87,12 @@ async def consulta_voz(
         raise HTTPException(status_code=code, detail=str(e))
 
     if formato_respuesta == FormatoRespuesta.audio:
+        # Los headers HTTP son latin-1: percent-encode la transcripción (el cliente
+        # debe aplicar decodeURIComponent / urllib.parse.unquote).
         return StreamingResponse(
             io.BytesIO(resultado["audio"]),
             media_type="audio/wav",
-            headers={"X-Pregunta-Transcrita": resultado["pregunta_transcrita"]},
+            headers={"X-Pregunta-Transcrita": quote(resultado["pregunta_transcrita"])},
         )
 
     audio_b64 = (
