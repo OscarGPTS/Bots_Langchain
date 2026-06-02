@@ -356,19 +356,27 @@ class ReindexarResponse(BaseModel):
     tiempo_total: float
 
 
-class VozTextoResponse(BaseModel):
-    """Response de consulta por voz (formato_respuesta=texto)."""
-    pregunta_transcrita: str = Field(..., description="Texto transcrito del audio de entrada")
-    respuesta: str = Field(..., description="Respuesta generada por el RAG")
-    tiempo_respuesta: float = Field(..., description="Tiempo total en segundos (STT + RAG)")
-
-
 class VozResponse(BaseModel):
-    """Response de consulta por voz (formato_respuesta=ambos): texto + audio en base64."""
+    """Response de consulta por voz (formato_respuesta=texto o ambos).
+
+    Con `formato_respuesta=texto`, `audio_base64` es `null`.
+    Con `formato_respuesta=ambos`, incluye el audio WAV de la respuesta en base64.
+    (Con `formato_respuesta=audio` la respuesta es binaria `audio/wav`, no este JSON.)
+    """
     pregunta_transcrita: str = Field(..., description="Texto transcrito del audio de entrada")
     respuesta: str = Field(..., description="Respuesta generada por el RAG")
-    audio_base64: Optional[str] = Field(None, description="Audio WAV de la respuesta en base64")
+    audio_base64: Optional[str] = Field(None, description="Audio WAV de la respuesta en base64 (solo formato=ambos)")
     tiempo_respuesta: float = Field(..., description="Tiempo total en segundos (STT + RAG + TTS)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "pregunta_transcrita": "¿Qué dice el reglamento interno sobre el horario de trabajo?",
+                "respuesta": "El horario de trabajo es de lunes a viernes de 8:00 a 17:00...",
+                "audio_base64": "UklGRiQAAABXQVZFZm10IB...(WAV en base64)...",
+                "tiempo_respuesta": 5.8,
+            }
+        }
 
 
 class VozHealthResponse(BaseModel):
@@ -383,3 +391,19 @@ class VozHealthResponse(BaseModel):
     openai_disponible: bool
     backend_rag: str
     whisper_model: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "voice_enabled": True,
+                "stt_provider": "local",
+                "tts_provider": "local",
+                "ffmpeg_disponible": True,
+                "faster_whisper_disponible": True,
+                "piper_disponible": True,
+                "voz_piper_existe": True,
+                "openai_disponible": True,
+                "backend_rag": "simple",
+                "whisper_model": "small",
+            }
+        }

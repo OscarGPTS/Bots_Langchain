@@ -50,7 +50,13 @@ app = FastAPI(
 
     ### Bot Avanzado (`/api/v1/bot-avanzado`)
     - **Propósito**: Análisis profundo con razonamiento
-    - **Tecnología**: OpenAI GPT-4o / GPT-4o-mini o Ollama
+    - **Tecnología**: ChromaDB + LLM configurable (`LLM_PROVIDER`): Ollama (local),
+      OpenAI o **OpenCode** (gateway). Los embeddings se mantienen locales (`LOCALIA`).
+
+    ### 🎙️ Voz (`/api/v1/voz`)
+    - **Propósito**: Consultar el RAG por voz (audio → texto → respuesta en texto y/o voz)
+    - **Tecnología**: STT + TTS conmutables (`STT_PROVIDER`/`TTS_PROVIDER`): local
+      (faster-whisper + Piper) u OpenAI. Requiere `VOICE_ENABLED=true`.
 
     ## 🔐 Autenticación
 

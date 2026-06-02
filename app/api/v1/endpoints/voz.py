@@ -1,13 +1,14 @@
-"""Rutas API para el servicio de voz (STT + RAG + TTS local)."""
+"""Rutas API para el servicio de voz (STT + RAG + TTS, local u OpenAI)."""
 import base64
 import io
 import os
+from enum import Enum
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
-from app.schemas import VozResponse, VozTextoResponse, VozHealthResponse
+from app.schemas import VozResponse, VozHealthResponse
 from app.services import voz as voz_service
 
 router = APIRouter(prefix="/api/v1/voz", tags=["Voz"])
@@ -16,22 +17,59 @@ router = APIRouter(prefix="/api/v1/voz", tags=["Voz"])
 _MAX_BYTES = 25 * 1024 * 1024
 
 
-@router.post("/consulta", summary="Consulta por voz (audio -> RAG -> texto/voz)")
+class FormatoRespuesta(str, Enum):
+    texto = "texto"
+    audio = "audio"
+    ambos = "ambos"
+
+
+@router.post(
+    "/consulta",
+    response_model=VozResponse,
+    summary="Consulta por voz (audio -> RAG -> texto/voz)",
+    responses={
+        200: {
+            "description": (
+                "Según `formato_respuesta`: `texto`/`ambos` devuelven JSON (VozResponse); "
+                "`audio` devuelve el WAV directamente."
+            ),
+            "content": {
+                "application/json": {
+                    "example": {
+                        "pregunta_transcrita": "¿Cuál es el horario de trabajo?",
+                        "respuesta": "El horario es de lunes a viernes de 8:00 a 17:00...",
+                        "audio_base64": "UklGRiQAAABXQVZF...(base64)...",
+                        "tiempo_respuesta": 5.8,
+                    }
+                },
+                "audio/wav": {"schema": {"type": "string", "format": "binary"}},
+            },
+        },
+        503: {"description": "Módulo de voz deshabilitado o dependencias faltantes"},
+        413: {"description": "Audio demasiado grande"},
+        422: {"description": "Audio vacío o ininteligible"},
+    },
+)
 async def consulta_voz(
     file: UploadFile = File(..., description="Archivo de audio (webm/wav/mp3/ogg/m4a)"),
-    formato_respuesta: str = Form("ambos", description="texto | audio | ambos"),
+    formato_respuesta: FormatoRespuesta = Form(
+        FormatoRespuesta.ambos, description="Formato de la respuesta: texto | audio | ambos"
+    ),
 ):
-    """Recibe audio, lo transcribe, consulta el RAG y responde en texto y/o voz.
+    """Recibe audio, lo transcribe (STT), consulta el RAG y responde en texto y/o voz.
 
-    - `texto`  → JSON `VozTextoResponse`
-    - `audio`  → `audio/wav` (header `X-Pregunta-Transcrita`)
-    - `ambos`  → JSON `VozResponse` (texto + `audio_base64`)
+    **Flujo:** audio → STT (faster-whisper o OpenAI) → RAG existente → TTS (Piper u OpenAI).
+
+    **Formatos de respuesta:**
+    - `texto` → JSON `VozResponse` con `audio_base64: null`.
+    - `audio` → `audio/wav` binario (header `X-Pregunta-Transcrita`).
+    - `ambos` → JSON `VozResponse` con texto + `audio_base64`.
+
+    **Requisitos:** `VOICE_ENABLED=true`. Proveedor local necesita `ffmpeg` y modelos
+    descargados (`scripts/descargar_modelos_voz.py`); proveedor `openai` necesita `OPENAI_API_KEY`.
     """
     if not settings.VOICE_ENABLED:
         raise HTTPException(status_code=503, detail="Módulo de voz deshabilitado (VOICE_ENABLED=false).")
-
-    if formato_respuesta not in ("texto", "audio", "ambos"):
-        raise HTTPException(status_code=422, detail="formato_respuesta debe ser: texto | audio | ambos")
 
     audio_bytes = await file.read()
     if not audio_bytes:
@@ -42,28 +80,23 @@ async def consulta_voz(
     sufijo = os.path.splitext(file.filename or "")[1] or ".bin"
 
     try:
-        resultado = voz_service.consulta_voz(audio_bytes, sufijo, formato_respuesta)
+        resultado = voz_service.consulta_voz(audio_bytes, sufijo, formato_respuesta.value)
     except (RuntimeError, ValueError) as e:
-        # Errores esperados (deps faltantes, audio inválido): 503/422
         code = 422 if isinstance(e, ValueError) else 503
         raise HTTPException(status_code=code, detail=str(e))
 
-    if formato_respuesta == "audio":
+    if formato_respuesta == FormatoRespuesta.audio:
         return StreamingResponse(
             io.BytesIO(resultado["audio"]),
             media_type="audio/wav",
             headers={"X-Pregunta-Transcrita": resultado["pregunta_transcrita"]},
         )
 
-    if formato_respuesta == "texto":
-        return VozTextoResponse(
-            pregunta_transcrita=resultado["pregunta_transcrita"],
-            respuesta=resultado["respuesta"],
-            tiempo_respuesta=resultado["tiempo_respuesta"],
-        )
-
-    # ambos
-    audio_b64 = base64.b64encode(resultado["audio"]).decode() if resultado["audio"] else None
+    audio_b64 = (
+        base64.b64encode(resultado["audio"]).decode()
+        if resultado.get("audio")
+        else None
+    )
     return VozResponse(
         pregunta_transcrita=resultado["pregunta_transcrita"],
         respuesta=resultado["respuesta"],
@@ -74,5 +107,5 @@ async def consulta_voz(
 
 @router.get("/health", response_model=VozHealthResponse, summary="Estado del módulo de voz")
 async def health():
-    """Reporta disponibilidad de ffmpeg, faster-whisper, Piper y la voz configurada."""
+    """Reporta proveedores activos y disponibilidad de ffmpeg, faster-whisper, Piper y OpenAI."""
     return VozHealthResponse(**voz_service.estado())

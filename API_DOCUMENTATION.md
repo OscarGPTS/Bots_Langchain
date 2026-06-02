@@ -560,8 +560,13 @@ curl -X GET "https://bots.tech-energy.lat/api/v1/bot-avanzado/recent-documents?l
 
 Base URL: `/api/v1/voz`
 
-STT/TTS **local** (faster-whisper + Piper). Requiere `VOICE_ENABLED=true`, `ffmpeg`
-instalado y los modelos descargados (`python scripts/descargar_modelos_voz.py`).
+STT/TTS conmutables por proveedor (`STT_PROVIDER` / `TTS_PROVIDER`):
+- **local** (default): faster-whisper + Piper. Requiere `ffmpeg` y modelos descargados
+  (`python scripts/descargar_modelos_voz.py`).
+- **openai**: usa la API de OpenAI (`whisper-1` para STT, `tts-1` para TTS). Requiere
+  `OPENAI_API_KEY`. ⚠️ El audio se envía a OpenAI (considerar privacidad y costo).
+
+Requiere `VOICE_ENABLED=true`.
 
 ### 1. Consulta por voz
 
