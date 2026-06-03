@@ -19,10 +19,18 @@ _model = None  # singleton del modelo Whisper por worker
 
 
 def _ffmpeg_exe() -> str | None:
-    """Resolver el ejecutable de ffmpeg: PATH del sistema o fallback imageio-ffmpeg."""
+    """Resolver el ejecutable de ffmpeg.
+
+    Orden: PATH del proceso → rutas absolutas conocidas (útil cuando systemd
+    restringe PATH al venv) → fallback imageio-ffmpeg (dev Windows).
+    """
     exe = shutil.which("ffmpeg")
     if exe:
         return exe
+    for candidate in ("/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/bin/ffmpeg"):
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            logger.debug("ffmpeg encontrado por ruta absoluta: %s", candidate)
+            return candidate
     try:
         import imageio_ffmpeg
 
