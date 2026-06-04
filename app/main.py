@@ -111,6 +111,8 @@ async def root():
         "endpoints": {
             "bot_simple": "/api/v1/bot-simple",
             "bot_avanzado": "/api/v1/bot-avanzado",
+            "voz": "/api/v1/voz",
+            "consultas": "/api/v1/consultas",
         },
     }
 

@@ -1,0 +1,70 @@
+# =====================================================================
+# CATÁLOGO DE REGLAS - Módulo de Consultas a Datos
+# =====================================================================
+# Copia este archivo a `config/rules.yaml` y ajústalo a tus orígenes.
+# La ruta se controla con RULES_PATH en el .env.
+#
+# IMPORTANTE (seguridad):
+#   - NO pongas secretos aquí. Las credenciales/URLs se referencian por
+#     NOMBRE de variable de entorno (`dsn_env`, `base_url_env`).
+#   - Para orígenes SQL usa SIEMPRE un usuario MySQL de SOLO LECTURA.
+#   - El bot solo puede consultar las tablas/recursos listados aquí
+#     (allowlist). Lo que no esté en el catálogo no es accesible.
+#
+# El campo `keys` es la lista de palabras (alias) por las que el matcher
+# reconoce una tabla/recurso en la frase del usuario. Sirve para acotar el
+# contexto que se envía al LLM (menos tokens) y guiar de dónde sacar datos.
+# =====================================================================
+
+origenes:
+
+  # ---------------------------------------------------------------
+  # Origen REST (recomendado por menor riesgo). Solo peticiones GET.
+  # ---------------------------------------------------------------
+  rh_api:
+    tipo: rest_api
+    descripcion: "API de Recursos Humanos: empleados con departamento, área y puesto."
+    base_url_env: API_RH_URL        # se lee del .env; valida host (anti-SSRF)
+    timeout: 15
+    recursos:
+      - nombre: empleados
+        keys: [empleado, empleados, usuario, usuarios, user, users, personal, colaborador, colaboradores, trabajador, trabajadores]
+        endpoint: "/users"          # GET {base_url}/users -> {success, total, data:[...]}
+        descripcion: >
+          Lista de empleados. Cada registro trae: nombre_completo, email, telefono,
+          activo (bool), y los objetos departamento{nombre}, area{nombre},
+          puesto{nombre}, jefe_directo{nombre_completo}. La API NO filtra ni agrega
+          en el servidor: el filtrado/conteo se hace del lado del cliente.
+        params_permitidos: []       # la API devuelve todos los usuarios; sin params
+        # 'lista_en': dónde vienen los registros dentro del JSON de respuesta.
+        lista_en: "data"
+
+  # ---------------------------------------------------------------
+  # Origen SQL MySQL/MariaDB (solo lectura).
+  # ---------------------------------------------------------------
+  ventas_db:
+    tipo: sql_mysql
+    descripcion: "Base de datos de ventas (solo lectura)."
+    dsn_env: VENTAS_DB_URL          # mysql+pymysql://ro_bot:***@host:3306/ventas
+    max_filas: 500                  # tope local (no supera CONSULTAS_MAX_FILAS)
+    timeout: 8                      # segundos máx. de ejecución
+    tablas:
+      - nombre: usuarios
+        keys: [usuario, usuarios, user, users, cliente, clientes, registro, registros]
+        descripcion: "Usuarios/clientes registrados en la plataforma."
+        columnas:
+          - {nombre: id, tipo: int, descripcion: "Identificador único"}
+          - {nombre: nombre, tipo: varchar, descripcion: "Nombre completo"}
+          - {nombre: email, tipo: varchar, descripcion: "Correo electrónico"}
+          - {nombre: fecha_ingreso, tipo: date, descripcion: "Fecha de alta/registro"}
+          - {nombre: activo, tipo: tinyint, descripcion: "1 = activo, 0 = inactivo"}
+
+      - nombre: ordenes
+        keys: [orden, ordenes, pedido, pedidos, venta, ventas, compra, compras]
+        descripcion: "Órdenes/pedidos de venta."
+        columnas:
+          - {nombre: id, tipo: int}
+          - {nombre: usuario_id, tipo: int, descripcion: "FK a usuarios.id"}
+          - {nombre: total, tipo: decimal, descripcion: "Importe total"}
+          - {nombre: estado, tipo: varchar, descripcion: "pendiente|pagada|cancelada"}
+          - {nombre: fecha, tipo: datetime, descripcion: "Fecha de la orden"}

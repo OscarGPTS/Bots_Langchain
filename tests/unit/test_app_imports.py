@@ -18,6 +18,7 @@ def test_routers_registered():
     assert any(p.startswith("/api/v1/bot-simple") for p in paths)
     assert any(p.startswith("/api/v1/bot-avanzado") for p in paths)
     assert any(p.startswith("/api/v1/voz") for p in paths)
+    assert any(p.startswith("/api/v1/consultas") for p in paths)
 
 
 def test_settings_loads():

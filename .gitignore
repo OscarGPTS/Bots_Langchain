@@ -16,6 +16,12 @@ build/
 .env
 !.env.example
 
+# Catálogo de reglas real (específico del entorno). Solo se versiona el ejemplo.
+# Los secretos NO van aquí: las credenciales se referencian por nombre de
+# variable de entorno (dsn_env/base_url_env) y viven en .env.
+config/rules.yaml
+!config/rules.example.yaml
+
 # Base de datos
 *.db
 *.sqlite

@@ -12,6 +12,10 @@ tiktoken>=0.5.2
 
 # Base de datos
 sqlalchemy>=2.0.0
+# Módulo de consultas a datos (NL -> SQL / API REST)
+pymysql>=1.1.0          # Driver MySQL/MariaDB para SQLAlchemy
+sqlglot>=25.0.0         # Parseo/validación del SQL generado (solo-lectura)
+pyyaml>=6.0             # Carga del catálogo de reglas (rules.yaml)
 
 # APIs y utilidades
 requests>=2.31.0

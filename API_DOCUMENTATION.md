@@ -616,6 +616,200 @@ curl -X POST "https://bots.tech-energy.lat/api/v1/voz/consulta" \
 
 ---
 
+## 🗂️ Consultas a Datos (NL → SQL / API REST)
+
+Consulta orígenes de datos (APIs REST y bases **MySQL de solo lectura**) a partir de lo
+que diga el usuario (texto; la voz se transcribe antes). Un **catálogo de reglas**
+(`config/rules.yaml`) define qué tablas/recursos hay y por qué *keys* se reconocen, para
+acotar el contexto enviado al LLM. La respuesta es un **objeto estructurado**
+(`texto` / `tabla` / `grafico`) que el frontend pinta (p. ej. con Chart.js).
+
+> **Solo lectura.** El bot nunca escribe: SQL validado (solo `SELECT`/`WITH`, allowlist
+> de tablas, `LIMIT` forzado) + usuario MySQL `GRANT SELECT` + transacción read-only.
+> REST solo `GET` con allowlist de host y params. Requiere `CONSULTAS_ENABLED=true`.
+
+### 1. Consultar datos
+
+**Endpoint:** `POST /api/v1/consultas/`
+
+**Request:**
+```json
+{
+  "consulta": "Dame una tabla de todos los empleados",
+  "origen": "rh_api",
+  "formato": null
+}
+```
+- `consulta` (string, required): lo que pide el usuario en lenguaje natural.
+- `origen` (string, required): clave del origen en el catálogo (`rh_api`, `ventas_db`, …).
+- `formato` (string, opcional): fuerza la salida → `texto` | `tabla` | `grafico`. Si se
+  omite, la IA decide.
+
+**Response (objeto estructurado):**
+```json
+{
+  "origen": "rh_api",
+  "tipo": "tabla",
+  "titulo": "Empleados",
+  "texto": "Se encontraron 87 resultado(s).",
+  "tabla": {
+    "columnas": ["nombre_completo", "email", "departamento", "area", "puesto", "activo"],
+    "filas": [
+      ["Ana López", "ana@x.com", "Sistemas", "TI", "Desarrolladora", true]
+    ],
+    "total_filas": 87,
+    "truncado": false
+  },
+  "grafico": null,
+  "meta": {
+    "origen_tipo": "rest_api",
+    "consulta_generada": "GET /users params={}",
+    "candidatos": ["empleados"],
+    "advertencias": []
+  },
+  "tiempo_respuesta": 1.4
+}
+```
+
+---
+
+### 📌 Ejemplo end-to-end con la API de RH
+
+El origen `rh_api` mapea la API real de Recursos Humanos (`GET {API_RH_URL}/users` →
+`{success, total, data:[...]}`). Cada empleado trae `nombre_completo`, `email`,
+`telefono`, `activo` y los objetos `departamento{nombre}`, `area{nombre}`,
+`puesto{nombre}`, `jefe_directo{nombre_completo}` (estos se aplanan a su `nombre`).
+
+**Catálogo (`config/rules.yaml`):**
+```yaml
+origenes:
+  rh_api:
+    tipo: rest_api
+    base_url_env: API_RH_URL          # https://services.satechenergy.com/api/rh
+    timeout: 15
+    recursos:
+      - nombre: empleados
+        keys: [empleado, empleados, usuario, usuarios, user, personal, colaborador, trabajador]
+        endpoint: "/users"
+        lista_en: "data"
+        params_permitidos: []
+```
+
+#### a) Listado → `tabla`
+
+```bash
+curl -X POST "https://bots.tech-energy.lat/api/v1/consultas/" \
+  -H "Content-Type: application/json" \
+  -d '{"consulta": "Lista de todos los empleados con su departamento", "origen": "rh_api"}'
+```
+
+El matcher detecta la key `empleados`, el LLM elige el recurso `empleados`, se hace
+`GET /users`, se aplanan los registros y se devuelve `tipo: "tabla"`.
+
+#### b) Visualización → `grafico` (FASE 2)
+
+```bash
+curl -X POST "https://bots.tech-energy.lat/api/v1/consultas/" \
+  -H "Content-Type: application/json" \
+  -d '{"consulta": "Gráfica de cuántos empleados hay por departamento", "origen": "rh_api"}'
+```
+
+La API REST no agrega, así que el LLM marca `tipo: "grafico"` con
+`agregacion: "conteo"` y la **agregación se hace del lado del servidor** (agrupando por
+`departamento`). Respuesta:
+
+```json
+{
+  "origen": "rh_api",
+  "tipo": "grafico",
+  "titulo": "Empleados por departamento",
+  "texto": "Gráfico generado con 4 categoría(s).",
+  "tabla": {
+    "columnas": ["nombre_completo", "departamento"],
+    "filas": [["Ana López", "Sistemas"], ["Luis Pérez", "Sistemas"], ["Eva Ruiz", "Ventas"]],
+    "total_filas": 87,
+    "truncado": false
+  },
+  "grafico": {
+    "tipo_grafico": "bar",
+    "etiquetas": ["Sistemas", "Ventas", "RH", "Operaciones"],
+    "series": [{ "label": "conteo", "data": [12, 9, 5, 61] }]
+  },
+  "meta": { "origen_tipo": "rest_api", "consulta_generada": "GET /users params={}", "candidatos": ["empleados"], "advertencias": [] },
+  "tiempo_respuesta": 1.8
+}
+```
+
+> Se devuelve `grafico` **y** `tabla` (los datos crudos detrás del gráfico), para que el
+> frontend muestre ambos si lo desea.
+
+**Pintar el gráfico con Chart.js** (el objeto ya viene en formato compatible):
+```javascript
+const r = await fetch("/api/v1/consultas/", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ consulta: "empleados por departamento", origen: "rh_api" })
+}).then(x => x.json());
+
+if (r.tipo === "grafico") {
+  new Chart(document.getElementById("c"), {
+    type: r.grafico.tipo_grafico,                 // "bar"
+    data: {
+      labels: r.grafico.etiquetas,                // ["Sistemas", ...]
+      datasets: r.grafico.series                  // [{ label: "conteo", data: [...] }]
+    }
+  });
+} else if (r.tipo === "tabla") {
+  // pintar r.tabla.columnas / r.tabla.filas
+} else {
+  // r.texto
+}
+```
+
+#### c) Ejemplo SQL (origen `ventas_db`)
+
+```bash
+curl -X POST ".../api/v1/consultas/" -H "Content-Type: application/json" \
+  -d '{"consulta": "Total vendido por mes en 2026 en una gráfica de líneas", "origen": "ventas_db", "formato": "grafico"}'
+```
+
+Para SQL el LLM genera el `SELECT` con `GROUP BY`/`SUM` (la agregación ocurre en la BD),
+se **valida como solo-lectura** y `meta.consulta_generada` devuelve el SQL ejecutado
+(auditoría), p. ej.:
+```sql
+SELECT DATE_FORMAT(fecha,'%Y-%m') AS mes, SUM(total) AS total
+FROM ordenes WHERE fecha >= '2026-01-01' GROUP BY mes ORDER BY mes LIMIT 500
+```
+
+---
+
+### 2. Health del módulo de consultas
+
+**Endpoint:** `GET /api/v1/consultas/health`
+
+```json
+{
+  "consultas_enabled": true,
+  "rules_cargado": true,
+  "rules_path": "config/rules.yaml",
+  "total_origenes": 2,
+  "origenes": [
+    { "clave": "rh_api", "tipo": "rest_api", "descripcion": "...", "tablas_o_recursos": ["empleados"] },
+    { "clave": "ventas_db", "tipo": "sql_mysql", "descripcion": "...", "tablas_o_recursos": ["usuarios", "ordenes"] }
+  ],
+  "error_rules": null
+}
+```
+
+**Códigos:** `400` origen inexistente / consulta inválida / SQL no permitido;
+`503` módulo deshabilitado o error de conexión con el origen.
+
+> **Tipos de salida:** `texto` (dato/resumen), `tabla` (`columnas`+`filas`),
+> `grafico` (`tipo_grafico`+`etiquetas`+`series`, Fase 2). La agregación para gráficos
+> sobre REST se calcula en el servidor (`conteo`/`suma`); sobre SQL la hace la propia BD.
+
+---
+
 ## 📋 Esquemas de Datos Completos
 
 ### DocumentoPaperless

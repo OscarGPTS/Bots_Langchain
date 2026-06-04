@@ -82,6 +82,14 @@ class Settings(BaseSettings):
     OPENAI_TTS_MODEL: str = "tts-1"        # tts-1 | tts-1-hd | gpt-4o-mini-tts
     OPENAI_TTS_VOICE: str = "nova"         # voz OpenAI (nova/shimmer/coral = femeninas)
 
+    # ===== Módulo de Consultas a Datos (NL -> SQL / API REST) =====
+    # Apagado por defecto. Consulta orígenes definidos en el catálogo de reglas.
+    CONSULTAS_ENABLED: bool = False
+    RULES_PATH: str = "config/rules.yaml"
+    CONSULTAS_MAX_FILAS: int = 500       # tope global de filas devueltas (solo-lectura)
+    CONSULTAS_SQL_TIMEOUT: int = 8       # segundos máx. de ejecución por consulta SQL
+    CONSULTAS_REST_TIMEOUT: int = 10     # timeout para orígenes REST
+
     # ===== Seguridad / operación =====
     # Token requerido para operaciones administrativas (p.ej. /reindexar).
     # Si está vacío, esos endpoints quedan deshabilitados (403).

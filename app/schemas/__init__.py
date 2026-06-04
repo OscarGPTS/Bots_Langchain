@@ -3,6 +3,19 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, List
 from datetime import datetime
 
+# Re-exporta los schemas del módulo de consultas para mantener la convención
+# `from app.schemas import ConsultaRequest`.
+from app.schemas.consultas import (  # noqa: E402,F401
+    TipoSalida,
+    ConsultaRequest,
+    ConsultaResponse,
+    TablaPayload,
+    GraficoPayload,
+    ConsultaMeta,
+    OrigenInfo,
+    ConsultasHealthResponse,
+)
+
 
 # ========== Requests ==========
 
