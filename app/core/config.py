@@ -6,7 +6,13 @@
 from functools import lru_cache
 from typing import List, Optional
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Cargar el .env también en os.environ. pydantic-settings solo mapea los campos
+# declarados; las variables DSN/URL arbitrarias que referencia rules.yaml
+# (dsn_env/base_url_env) se leen con os.getenv y necesitan estar en el entorno.
+load_dotenv()
 
 
 class Settings(BaseSettings):

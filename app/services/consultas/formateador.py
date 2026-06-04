@@ -122,6 +122,12 @@ def _construir_grafico(
     return GraficoPayload(tipo_grafico=tipo_grafico, etiquetas=etiquetas, series=series)
 
 
+def _saludo(usuario: Optional[str]) -> str:
+    """Frase de apertura personalizada (corta) para la respuesta."""
+    u = (usuario or "").strip()
+    return f"{u}, aquí tienes el resultado" if u else "Aquí tienes el resultado"
+
+
 def _resolver_tipo(tipo_sugerido: str, formato_forzado: Optional[str], num_filas: int) -> TipoSalida:
     if formato_forzado:
         return TipoSalida(formato_forzado)
@@ -148,10 +154,12 @@ def construir_respuesta(
     advertencias: List[str],
     tiempo_respuesta: float,
     grafico_spec: Optional[Dict] = None,
+    usuario: Optional[str] = None,
 ) -> ConsultaResponse:
     """Ensamblar la `ConsultaResponse` a partir de los resultados ya ejecutados."""
     total = len(filas)
     tipo = _resolver_tipo(tipo_sugerido, formato_forzado, total)
+    saludo = _saludo(usuario)
 
     tabla = None
     grafico = None
@@ -171,15 +179,18 @@ def construir_respuesta(
             # No se pudo graficar: degradar a tabla.
             tipo = TipoSalida.tabla
             advertencias = advertencias + ["No se pudo construir el gráfico; se devuelve la tabla."]
-            texto = f"Se encontraron {total} resultado(s)."
+            texto = f"{saludo}: {total} registro(s)."
         else:
-            texto = f"Gráfico generado con {len(grafico.etiquetas)} categoría(s)."
+            texto = f"{saludo}: un gráfico con {len(grafico.etiquetas)} categoría(s)."
     elif tipo == TipoSalida.tabla:
-        texto = f"Se encontraron {total} resultado(s)." + (
-            " (resultado recortado al máximo de filas)." if truncado else ""
+        texto = f"{saludo}: {total} registro(s)." + (
+            " El listado se recortó al máximo de filas." if truncado else ""
         )
     else:  # texto
-        texto = generador.resumir_resultados(consulta, columnas, filas, total)
+        resumen = generador.resumir_resultados(consulta, columnas, filas, total)
+        # Personalizar anteponiendo el nombre cuando se proporciona.
+        u = (usuario or "").strip()
+        texto = f"{u}, {resumen}" if u else resumen
         tabla = None  # en modo texto no devolvemos la tabla
 
     return ConsultaResponse(

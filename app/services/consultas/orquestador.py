@@ -25,8 +25,19 @@ class ConsultaError(ValueError):
     """Error de negocio de una consulta (entrada inválida, origen inexistente, etc.)."""
 
 
-def procesar_consulta(consulta: str, origen_clave: str, formato: Optional[str] = None) -> ConsultaResponse:
-    """Procesar una consulta de datos contra un origen del catálogo."""
+def procesar_consulta(
+    consulta: str,
+    origen_clave: str,
+    formato: Optional[str] = None,
+    usuario: Optional[str] = None,
+    objetivo: Optional[str] = None,
+) -> ConsultaResponse:
+    """Procesar una consulta de datos contra un origen del catálogo.
+
+    `usuario` (nombre de quien consulta) se usa solo para personalizar la respuesta.
+    `objetivo` apunta a una tabla/recurso concreto: si se indica, se ignora el matcher
+    por palabras clave y se trabaja SOLO sobre esa entidad (más preciso).
+    """
     if not settings.CONSULTAS_ENABLED:
         raise ConsultaError("El módulo de consultas está deshabilitado (CONSULTAS_ENABLED=false).")
 
@@ -38,7 +49,18 @@ def procesar_consulta(consulta: str, origen_clave: str, formato: Optional[str] =
         raise ConsultaError(f"Origen '{origen_clave}' no existe. Disponibles: {disponibles}.")
 
     tipo_origen = origen.get("tipo")
-    candidatos = catalogo.emparejar_candidatos(origen, consulta)
+
+    if objetivo:
+        # Modo específico: usar solo la tabla/recurso indicado (sin matcher).
+        item = catalogo.item_por_nombre(origen, objetivo)
+        if item is None:
+            disponibles = ", ".join(catalogo.nombres_items(origen)) or "(ninguno)"
+            raise ConsultaError(
+                f"El objetivo '{objetivo}' no existe en '{origen_clave}'. Disponibles: {disponibles}."
+            )
+        candidatos = [item]
+    else:
+        candidatos = catalogo.emparejar_candidatos(origen, consulta)
     if not candidatos:
         raise ConsultaError(f"El origen '{origen_clave}' no tiene tablas/recursos definidos.")
 
@@ -46,25 +68,35 @@ def procesar_consulta(consulta: str, origen_clave: str, formato: Optional[str] =
 
     if tipo_origen == "sql_mysql":
         return _procesar_sql(
-            consulta, origen_clave, origen, candidatos, nombres_candidatos, formato, inicio
+            consulta, origen_clave, origen, candidatos, nombres_candidatos, formato, inicio, usuario
         )
     if tipo_origen == "rest_api":
         return _procesar_rest(
-            consulta, origen_clave, origen, candidatos, nombres_candidatos, formato, inicio
+            consulta, origen_clave, origen, candidatos, nombres_candidatos, formato, inicio, usuario
         )
 
     raise ConsultaError(f"Tipo de origen no soportado: {tipo_origen!r}.")
 
 
-def _procesar_sql(consulta, origen_clave, origen, candidatos, nombres, formato, inicio):
+def _procesar_sql(consulta, origen_clave, origen, candidatos, nombres, formato, inicio, usuario=None):
+    """Flujo SQL: expande relaciones (FK) → genera SELECT → valida → ejecuta → formatea.
+
+    `candidatos` son las tablas detectadas; se amplían con sus tablas relacionadas para
+    permitir JOINs (allowlist). `nombres` se conserva como los candidatos originales para
+    la trazabilidad (`meta.candidatos`).
+    """
     max_filas = min(
         int(origen.get("max_filas", settings.CONSULTAS_MAX_FILAS)),
         settings.CONSULTAS_MAX_FILAS,
     )
 
-    generado = generador.generar_sql(consulta, candidatos, max_filas)
+    # Ampliar con tablas relacionadas (FK) y obtener los hints de JOIN.
+    tablas_contexto, join_hints = catalogo.expandir_relaciones(origen, candidatos)
+    allowlist = [t.get("nombre", "") for t in tablas_contexto]  # incluye relacionadas
+
+    generado = generador.generar_sql(consulta, tablas_contexto, max_filas, join_hints)
     sql_seguro, advertencias = seguridad_sql.validar_y_asegurar(
-        generado["sql"], tablas_permitidas=nombres, max_filas=max_filas
+        generado["sql"], tablas_permitidas=allowlist, max_filas=max_filas
     )
 
     columnas, filas, truncado = ejecutor_sql.ejecutar(origen_clave, origen, sql_seguro)
@@ -84,10 +116,16 @@ def _procesar_sql(consulta, origen_clave, origen, candidatos, nombres, formato, 
         advertencias=advertencias,
         tiempo_respuesta=time.time() - inicio,
         grafico_spec=generado.get("grafico"),
+        usuario=usuario,
     )
 
 
-def _procesar_rest(consulta, origen_clave, origen, candidatos, nombres, formato, inicio):
+def _procesar_rest(consulta, origen_clave, origen, candidatos, nombres, formato, inicio, usuario=None):
+    """Flujo REST: el LLM elige un recurso y sus params → GET (anti-SSRF) → formatea.
+
+    La agregación para gráficos (si aplica) la resuelve el formateador, ya que las APIs
+    REST no agregan en el servidor.
+    """
     generado = generador.generar_intent_rest(consulta, candidatos)
 
     recurso = next((c for c in candidatos if c.get("nombre") == generado["recurso"]), None)
@@ -114,6 +152,7 @@ def _procesar_rest(consulta, origen_clave, origen, candidatos, nombres, formato,
         advertencias=[],
         tiempo_respuesta=time.time() - inicio,
         grafico_spec=generado.get("grafico"),
+        usuario=usuario,
     )
 
 

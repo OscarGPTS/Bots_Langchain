@@ -62,6 +62,11 @@ origenes:
       - nombre: ordenes
         keys: [orden, ordenes, pedido, pedidos, venta, ventas, compra, compras]
         descripcion: "Órdenes/pedidos de venta."
+        # 'relaciones' declara las claves foráneas (JOINs) que el bot puede usar.
+        # Al consultar esta tabla, el LLM recibe estos JOIN y el validador permite
+        # también las tablas relacionadas. Útil para consultas que cruzan entidades.
+        relaciones:
+          - {tabla: usuarios, on: "ordenes.usuario_id = usuarios.id", descripcion: "Usuario que hizo la orden"}
         columnas:
           - {nombre: id, tipo: int}
           - {nombre: usuario_id, tipo: int, descripcion: "FK a usuarios.id"}

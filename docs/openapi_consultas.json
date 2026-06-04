@@ -1,0 +1,716 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API de Consultas a Datos",
+    "description": "NL → SQL / API REST (solo lectura) con salida estructurada (texto/tabla/gráfico). Ver docs/API_CONSULTAS.md.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000"
+    },
+    {
+      "url": "https://bots.tech-energy.lat"
+    }
+  ],
+  "paths": {
+    "/api/v1/consultas/": {
+      "post": {
+        "tags": [
+          "Consultas"
+        ],
+        "summary": "Consultar datos de un origen (texto -> SQL/API, solo lectura)",
+        "description": "Recibe lo que pide el usuario y el `origen`, y devuelve datos estructurados.\n\n**Flujo:** keys → acota tablas/recursos → el LLM genera un `SELECT` (validado\ncomo solo-lectura) o elige un endpoint REST `GET` → ejecuta → objeto estructurado.\n\n**Seguridad:** solo lectura. SQL validado (sqlglot) + usuario MySQL read-only;\nREST solo `GET` con allowlist de host y params. Ver `config/rules.example.yaml`.",
+        "operationId": "consultar_api_v1_consultas__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsultaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Objeto estructurado (texto/tabla).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Origen inexistente, consulta inválida o SQL no permitido."
+          },
+          "503": {
+            "description": "Módulo deshabilitado o error de conexión con el origen."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/consultas/voz": {
+      "post": {
+        "tags": [
+          "Consultas"
+        ],
+        "summary": "Consultar datos por voz (audio -> transcripción -> SQL/API -> objeto + voz)",
+        "description": "Recibe audio, lo transcribe (STT) y lo procesa como una consulta a datos.\n\n**Flujo:** audio → STT (faster-whisper u OpenAI) → orquestador (NL→SQL/API,\nsolo lectura) → objeto estructurado + (opcional) resumen hablado (TTS).\n\nReutiliza la misma configuración de voz del módulo `/api/v1/voz`\n(`VOICE_ENABLED`, `STT_PROVIDER`, `TTS_PROVIDER`, …) y de consultas\n(`CONSULTAS_ENABLED`, catálogo de reglas).",
+        "operationId": "consultar_voz_api_v1_consultas_voz_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_consultar_voz_api_v1_consultas_voz_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Transcripción + objeto estructurado (+ resumen hablado opcional).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultaVozResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Origen inexistente / consulta inválida / SQL no permitido."
+          },
+          "413": {
+            "description": "Audio demasiado grande."
+          },
+          "422": {
+            "description": "Audio vacío o ininteligible."
+          },
+          "503": {
+            "description": "Módulo de consultas o de voz deshabilitado / dependencias faltantes."
+          }
+        }
+      }
+    },
+    "/api/v1/consultas/health": {
+      "get": {
+        "tags": [
+          "Consultas"
+        ],
+        "summary": "Estado del módulo de consultas",
+        "description": "Reporta si el módulo está activo, si el catálogo cargó y los orígenes disponibles.",
+        "operationId": "health_api_v1_consultas_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultasHealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_consultar_voz_api_v1_consultas_voz_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Archivo de audio (webm/wav/mp3/ogg/m4a)"
+          },
+          "origen": {
+            "type": "string",
+            "title": "Origen",
+            "description": "Clave del origen a consultar (p.ej. cartera_db, rh_api)"
+          },
+          "formato": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formato",
+            "description": "Fuerza la salida: texto | tabla | grafico"
+          },
+          "responder_voz": {
+            "type": "boolean",
+            "title": "Responder Voz",
+            "description": "Si true, incluye un resumen hablado (audio_base64)",
+            "default": true
+          },
+          "usuario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usuario",
+            "description": "Nombre de quien consulta, para personalizar la respuesta"
+          },
+          "objetivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objetivo",
+            "description": "Tabla/recurso específico a consultar (omite el matcher)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "origen"
+        ],
+        "title": "Body_consultar_voz_api_v1_consultas_voz_post"
+      },
+      "ConsultaMeta": {
+        "properties": {
+          "origen_tipo": {
+            "type": "string",
+            "title": "Origen Tipo",
+            "description": "sql_mysql | rest_api"
+          },
+          "consulta_generada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consulta Generada",
+            "description": "SQL ejecutado o endpoint REST consultado (auditoría)."
+          },
+          "candidatos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Candidatos",
+            "description": "Tablas/recursos candidatos detectados por las keys."
+          },
+          "advertencias": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Advertencias"
+          }
+        },
+        "type": "object",
+        "required": [
+          "origen_tipo"
+        ],
+        "title": "ConsultaMeta",
+        "description": "Metadatos de trazabilidad y auditoría de la consulta."
+      },
+      "ConsultaRequest": {
+        "properties": {
+          "consulta": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Consulta",
+            "description": "Lo que pide el usuario en lenguaje natural (texto; la voz se transcribe antes)."
+          },
+          "origen": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Origen",
+            "description": "Clave del origen a consultar (definido en el catálogo de reglas)."
+          },
+          "formato": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TipoSalida"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fuerza el tipo de salida. Si se omite, la IA lo decide (texto/tabla)."
+          },
+          "usuario": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usuario",
+            "description": "Nombre de quien consulta, para personalizar la respuesta (p.ej. 'Óscar')."
+          },
+          "objetivo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objetivo",
+            "description": "Tabla (SQL) o recurso (REST) específico a consultar. Si se indica, se ignora el matcher por palabras clave y la IA trabaja SOLO sobre esa entidad (más preciso, menos errores). P.ej. 'proyectos'."
+          }
+        },
+        "type": "object",
+        "required": [
+          "consulta",
+          "origen"
+        ],
+        "title": "ConsultaRequest",
+        "description": "Petición de consulta a un origen de datos.",
+        "example": {
+          "consulta": "Estadísticas de los proyectos de este mes",
+          "objetivo": "proyectos",
+          "origen": "cartera_db",
+          "usuario": "Óscar"
+        }
+      },
+      "ConsultaResponse": {
+        "properties": {
+          "origen": {
+            "type": "string",
+            "title": "Origen"
+          },
+          "tipo": {
+            "$ref": "#/components/schemas/TipoSalida",
+            "description": "texto | tabla | grafico"
+          },
+          "titulo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titulo",
+            "description": "Título legible de la respuesta."
+          },
+          "texto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto",
+            "description": "Respuesta/resumen en lenguaje natural."
+          },
+          "tabla": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TablaPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Datos tabulares (si tipo=tabla)."
+          },
+          "grafico": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraficoPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Spec de gráfico (fase 2)."
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ConsultaMeta"
+          },
+          "tiempo_respuesta": {
+            "type": "number",
+            "title": "Tiempo Respuesta",
+            "description": "Tiempo total en segundos."
+          }
+        },
+        "type": "object",
+        "required": [
+          "origen",
+          "tipo",
+          "meta",
+          "tiempo_respuesta"
+        ],
+        "title": "ConsultaResponse",
+        "description": "Respuesta estructurada de una consulta a datos.",
+        "example": {
+          "meta": {
+            "advertencias": [],
+            "candidatos": [
+              "usuarios"
+            ],
+            "consulta_generada": "SELECT id, nombre, email, fecha_ingreso FROM usuarios WHERE fecha_ingreso >= '2026-01-01' LIMIT 500",
+            "origen_tipo": "sql_mysql"
+          },
+          "origen": "ventas_db",
+          "tabla": {
+            "columnas": [
+              "id",
+              "nombre",
+              "email",
+              "fecha_ingreso"
+            ],
+            "filas": [
+              [
+                1,
+                "Ana López",
+                "ana@x.com",
+                "2026-02-03"
+              ]
+            ],
+            "total_filas": 42,
+            "truncado": false
+          },
+          "texto": "Se encontraron 42 usuarios registrados a partir del 1 de enero de 2026.",
+          "tiempo_respuesta": 1.8,
+          "tipo": "tabla",
+          "titulo": "Usuarios registrados desde 2026-01-01"
+        }
+      },
+      "ConsultaVozResponse": {
+        "properties": {
+          "pregunta_transcrita": {
+            "type": "string",
+            "title": "Pregunta Transcrita",
+            "description": "Texto transcrito del audio de entrada."
+          },
+          "resultado": {
+            "$ref": "#/components/schemas/ConsultaResponse",
+            "description": "Respuesta estructurada (igual que el endpoint de texto)."
+          },
+          "audio_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Base64",
+            "description": "Resumen hablado en WAV (base64), solo si responder_voz=true."
+          }
+        },
+        "type": "object",
+        "required": [
+          "pregunta_transcrita",
+          "resultado"
+        ],
+        "title": "ConsultaVozResponse",
+        "description": "Respuesta de una consulta por voz: transcripción + resultado + audio opcional.",
+        "example": {
+          "audio_base64": "UklGRiQAAABXQVZF...(WAV en base64)...",
+          "pregunta_transcrita": "cuántos clientes hay por sector",
+          "resultado": {
+            "grafico": {
+              "etiquetas": [
+                "Oil & Gas"
+              ],
+              "series": [
+                {
+                  "data": [
+                    20
+                  ],
+                  "label": "cantidad"
+                }
+              ],
+              "tipo_grafico": "bar"
+            },
+            "meta": {
+              "advertencias": [],
+              "candidatos": [
+                "clientes"
+              ],
+              "consulta_generada": "SELECT sector, COUNT(*) ...",
+              "origen_tipo": "sql_mysql"
+            },
+            "origen": "cartera_db",
+            "tabla": {
+              "columnas": [
+                "sector",
+                "cantidad"
+              ],
+              "filas": [
+                [
+                  "Oil & Gas",
+                  20
+                ]
+              ],
+              "total_filas": 6,
+              "truncado": false
+            },
+            "texto": "Gráfico generado con 6 categoría(s).",
+            "tiempo_respuesta": 2.1,
+            "tipo": "grafico",
+            "titulo": "Clientes por sector"
+          }
+        }
+      },
+      "ConsultasHealthResponse": {
+        "properties": {
+          "consultas_enabled": {
+            "type": "boolean",
+            "title": "Consultas Enabled"
+          },
+          "rules_cargado": {
+            "type": "boolean",
+            "title": "Rules Cargado"
+          },
+          "rules_path": {
+            "type": "string",
+            "title": "Rules Path"
+          },
+          "total_origenes": {
+            "type": "integer",
+            "title": "Total Origenes"
+          },
+          "origenes": {
+            "items": {
+              "$ref": "#/components/schemas/OrigenInfo"
+            },
+            "type": "array",
+            "title": "Origenes"
+          },
+          "error_rules": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Rules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consultas_enabled",
+          "rules_cargado",
+          "rules_path",
+          "total_origenes"
+        ],
+        "title": "ConsultasHealthResponse",
+        "description": "Estado del módulo de consultas."
+      },
+      "GraficoPayload": {
+        "properties": {
+          "tipo_grafico": {
+            "type": "string",
+            "title": "Tipo Grafico",
+            "description": "bar | line | pie | ... (fase 2)"
+          },
+          "etiquetas": {
+            "items": {},
+            "type": "array",
+            "title": "Etiquetas"
+          },
+          "series": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Series"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo_grafico"
+        ],
+        "title": "GraficoPayload",
+        "description": "Especificación de gráfico (FASE 2). Hueco reservado; hoy siempre null."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "OrigenInfo": {
+        "properties": {
+          "clave": {
+            "type": "string",
+            "title": "Clave"
+          },
+          "tipo": {
+            "type": "string",
+            "title": "Tipo"
+          },
+          "descripcion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descripcion"
+          },
+          "tablas_o_recursos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tablas O Recursos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clave",
+          "tipo"
+        ],
+        "title": "OrigenInfo",
+        "description": "Resumen de un origen disponible (para listar el catálogo)."
+      },
+      "TablaPayload": {
+        "properties": {
+          "columnas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columnas",
+            "description": "Nombres de columna en orden."
+          },
+          "filas": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Filas",
+            "description": "Filas; cada fila alinea con `columnas`."
+          },
+          "total_filas": {
+            "type": "integer",
+            "title": "Total Filas",
+            "description": "Filas devueltas (tras aplicar el tope)."
+          },
+          "truncado": {
+            "type": "boolean",
+            "title": "Truncado",
+            "description": "True si se alcanzó el tope de filas (`max_filas`).",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "columnas",
+          "filas",
+          "total_filas"
+        ],
+        "title": "TablaPayload",
+        "description": "Datos tabulares para pintar una tabla en el frontend."
+      },
+      "TipoSalida": {
+        "type": "string",
+        "enum": [
+          "texto",
+          "tabla",
+          "grafico"
+        ],
+        "title": "TipoSalida",
+        "description": "Tipo de representación sugerida para el frontend."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Consultas"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ from app.schemas.consultas import (  # noqa: E402,F401
     TablaPayload,
     GraficoPayload,
     ConsultaMeta,
+    ConsultaVozResponse,
     OrigenInfo,
     ConsultasHealthResponse,
 )

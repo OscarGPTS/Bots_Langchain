@@ -11,6 +11,21 @@ API REST construida con **FastAPI** para consultas inteligentes de documentos us
 
 ---
 
+## 📚 Documentación
+
+La documentación detallada vive en [`docs/`](docs/):
+
+| Documento | Contenido |
+|-----------|-----------|
+| [docs/API_CONSULTAS.md](docs/API_CONSULTAS.md) | **Guía del servicio de Consultas a Datos** (NL → SQL / API REST). Pensada para compartir con el equipo: endpoints, esquema de respuesta, ejemplos, voz, cómo configurar orígenes y seguridad. |
+| [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Arquitectura del sistema, mapa de módulos y **cómo se integró la voz**. |
+| [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) | Referencia completa de la API (todos los bots + voz + consultas). |
+| [docs/INTEGRACION_VOZ_CLIENTE.md](docs/INTEGRACION_VOZ_CLIENTE.md) | Cómo consumir el servicio de voz desde una app cliente. |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Guía de despliegue en producción (instalación desde cero). |
+| [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md) | **Runbook de operación**: aplicar cambios, instalar librerías, reiniciar el servicio, ver logs y diagnosticar (con los valores reales del servidor). |
+
+---
+
 ## 📋 Tabla de Contenidos
 
 - [Inicio Rápido](#-inicio-rápido-5-minutos)
@@ -101,6 +116,13 @@ python scripts/iniciar_api.py
 **Bot General** — `bots/bot_general.py` *(uso interno / scripts)*
 - 🔗 Combina datos de RH + documentos de Paperless en una sola consulta
 - 🤖 Ollama para respuestas integradas entre ambas fuentes
+
+**🗂️ Consultas a Datos** (`/api/v1/consultas`) — `app/services/consultas/`
+- 🧠 Lenguaje natural → SQL (MySQL) o API REST, **solo lectura**
+- 🗃️ Catálogo de reglas (`config/rules.yaml`) que define orígenes, tablas y relaciones (FK)
+- 📊 Salida estructurada: `texto` / `tabla` / `grafico` (Chart.js)
+- 🎙️ Disponible también por voz (`/api/v1/consultas/voz`)
+- 📖 Guía dedicada: [docs/API_CONSULTAS.md](docs/API_CONSULTAS.md)
 
 ### 🛠️ Stack Tecnológico
 - **API**: FastAPI + Uvicorn + Gunicorn (producción)

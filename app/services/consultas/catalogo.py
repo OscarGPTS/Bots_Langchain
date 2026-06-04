@@ -116,3 +116,40 @@ def emparejar_candidatos(origen: Dict, consulta: str) -> List[Dict]:
 def nombres_items(origen: Dict) -> List[str]:
     """Nombres de las tablas/recursos de un origen (para health/listados)."""
     return [it.get("nombre", "") for it in _items_del_origen(origen)]
+
+
+def item_por_nombre(origen: Dict, nombre: str) -> Optional[Dict]:
+    """Tabla/recurso del origen por su nombre exacto (case-insensitive), o None."""
+    objetivo = _normalizar(str(nombre))
+    for it in _items_del_origen(origen):
+        if _normalizar(str(it.get("nombre", ""))) == objetivo:
+            return dict(it)
+    return None
+
+
+def expandir_relaciones(origen: Dict, candidatos: List[Dict]) -> tuple:
+    """Para orígenes SQL: añade las tablas relacionadas (FK) y arma los hints de JOIN.
+
+    Devuelve (tablas_contexto, join_hints):
+      - tablas_contexto: candidatos + tablas referenciadas en `relaciones` (con su
+        esquema), para que el LLM las conozca y el validador las permita.
+      - join_hints: textos "a.col = b.col" para guiar los JOIN en el prompt.
+    """
+    tablas = list(candidatos)
+    presentes = {_normalizar(str(t.get("nombre", ""))) for t in tablas}
+    join_hints: List[str] = []
+
+    for t in candidatos:
+        for rel in t.get("relaciones", []) or []:
+            rel_tabla = rel.get("tabla")
+            cond = rel.get("on")
+            if cond:
+                desc = f" ({rel['descripcion']})" if rel.get("descripcion") else ""
+                join_hints.append(f"{t.get('nombre')} ↔ {rel_tabla}: {cond}{desc}")
+            if rel_tabla and _normalizar(str(rel_tabla)) not in presentes:
+                rel_def = item_por_nombre(origen, rel_tabla)
+                if rel_def:
+                    tablas.append(rel_def)
+                    presentes.add(_normalizar(str(rel_tabla)))
+
+    return tablas, join_hints

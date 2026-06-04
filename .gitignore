@@ -40,6 +40,9 @@ models/
 *.swp
 *.swo
 
+# Configuración local de Claude Code (permisos por máquina; no versionar)
+.claude/settings.local.json
+
 # Sistema
 .DS_Store
 Thumbs.db

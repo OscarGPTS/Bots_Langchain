@@ -7,7 +7,7 @@ como capa de seguridad a nivel motor.
 import os
 from typing import Dict, Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 
 from app.core.config import settings
@@ -18,11 +18,36 @@ logger = get_logger(__name__)
 _engines: Dict[str, Engine] = {}
 
 
+def _configurar_sesion(timeout_seg: int):
+    """Listener que, al abrir cada conexión, fija sesión de solo lectura y timeout.
+
+    Tolerante a MySQL vs MariaDB: cada motor usa una variable distinta para el
+    timeout (`MAX_EXECUTION_TIME` en ms / `max_statement_time` en s). Las
+    sentencias no soportadas se ignoran en silencio.
+    """
+    sentencias = [
+        "SET SESSION TRANSACTION READ ONLY",          # ambos: bloquea escrituras
+        f"SET SESSION MAX_EXECUTION_TIME={max(1, timeout_seg) * 1000}",  # MySQL (ms)
+        f"SET SESSION max_statement_time={max(1, timeout_seg)}",          # MariaDB (s)
+    ]
+
+    def _on_connect(dbapi_conn, _conn_record):
+        cur = dbapi_conn.cursor()
+        for stmt in sentencias:
+            try:
+                cur.execute(stmt)
+            except Exception:  # noqa: BLE001 - variable no soportada por este motor
+                pass
+        cur.close()
+
+    return _on_connect
+
+
 def obtener_engine(clave_origen: str, dsn_env: str) -> Engine:
     """Devolver (y cachear) el Engine de un origen SQL.
 
-    Aplica timeout de ejecución en el servidor (MAX_EXECUTION_TIME) y un modo de
-    transacción de solo lectura como defensa adicional.
+    Cada conexión se abre en modo de SOLO LECTURA y con timeout de ejecución en el
+    servidor (defensa adicional, además de la validación de SQL).
 
     Lanza ValueError si la variable de entorno del DSN no está configurada.
     """
@@ -35,22 +60,13 @@ def obtener_engine(clave_origen: str, dsn_env: str) -> Engine:
             f"El origen '{clave_origen}' requiere la variable de entorno '{dsn_env}' (DSN MySQL read-only)."
         )
 
-    timeout_ms = max(1, settings.CONSULTAS_SQL_TIMEOUT) * 1000
-    # init_command se ejecuta al abrir cada conexión del pool.
-    init_command = (
-        f"SET SESSION MAX_EXECUTION_TIME={timeout_ms}, "
-        f"SESSION TRANSACTION READ ONLY"
-    )
-
     engine = create_engine(
         dsn,
         pool_pre_ping=True,
         pool_recycle=1800,
-        connect_args={
-            "connect_timeout": settings.CONSULTAS_SQL_TIMEOUT,
-            "init_command": init_command,
-        },
+        connect_args={"connect_timeout": settings.CONSULTAS_SQL_TIMEOUT},
     )
+    event.listen(engine, "connect", _configurar_sesion(settings.CONSULTAS_SQL_TIMEOUT))
     _engines[clave_origen] = engine
     logger.info("Engine MySQL inicializado para origen '%s'", clave_origen)
     return engine

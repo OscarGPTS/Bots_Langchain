@@ -8,7 +8,7 @@ La salida se pide en JSON estricto y se parsea de forma defensiva.
 """
 import json
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -54,10 +54,17 @@ def _esquema_recursos(candidatos: List[Dict]) -> str:
     return "\n\n".join(bloques)
 
 
-def generar_sql(consulta: str, candidatos: List[Dict], max_filas: int) -> Dict:
+def generar_sql(consulta: str, candidatos: List[Dict], max_filas: int, join_hints: Optional[List[str]] = None) -> Dict:
     """NL -> {sql, titulo, tipo}. El SELECT se valida después con seguridad_sql."""
     esquema = _esquema_tablas(candidatos)
     nombres = [t["nombre"] for t in candidatos]
+
+    bloque_joins = ""
+    if join_hints:
+        bloque_joins = (
+            "\n- Relaciones disponibles (usa JOIN cuando la pregunta lo requiera):\n  "
+            + "\n  ".join(join_hints)
+        )
 
     system = (
         "Eres un asistente que traduce preguntas en español a UNA consulta SQL de "
@@ -65,7 +72,8 @@ def generar_sql(consulta: str, candidatos: List[Dict], max_filas: int) -> Dict:
         "- Genera EXCLUSIVAMENTE una sentencia SELECT (o WITH ... SELECT).\n"
         "- PROHIBIDO: INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, GRANT, ';' múltiple.\n"
         f"- Usa SOLO estas tablas y columnas: {', '.join(nombres)}.\n"
-        f"- Incluye siempre un LIMIT (máximo {max_filas}).\n"
+        f"- Incluye siempre un LIMIT (máximo {max_filas})."
+        f"{bloque_joins}\n"
         "- tipo='tabla' si la pregunta pide un listado; 'texto' si pide un dato único o "
         "explicación; 'grafico' si pide graficar/visualizar/comparar magnitudes.\n"
         "- Si tipo='grafico', AGREGA en el propio SQL (GROUP BY, COUNT/SUM) y añade un "

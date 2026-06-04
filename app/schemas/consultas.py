@@ -36,12 +36,28 @@ class ConsultaRequest(BaseModel):
         None,
         description="Fuerza el tipo de salida. Si se omite, la IA lo decide (texto/tabla).",
     )
+    usuario: Optional[str] = Field(
+        None,
+        description="Nombre de quien consulta, para personalizar la respuesta (p.ej. 'Óscar').",
+        max_length=80,
+    )
+    objetivo: Optional[str] = Field(
+        None,
+        description=(
+            "Tabla (SQL) o recurso (REST) específico a consultar. Si se indica, se "
+            "ignora el matcher por palabras clave y la IA trabaja SOLO sobre esa "
+            "entidad (más preciso, menos errores). P.ej. 'proyectos'."
+        ),
+        max_length=64,
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "consulta": "Dame una tabla de todos los usuarios registrados desde el 1 de enero de 2026",
-                "origen": "ventas_db",
+                "consulta": "Estadísticas de los proyectos de este mes",
+                "origen": "cartera_db",
+                "objetivo": "proyectos",
+                "usuario": "Óscar",
             }
         }
 
@@ -107,6 +123,33 @@ class ConsultaResponse(BaseModel):
                     "advertencias": [],
                 },
                 "tiempo_respuesta": 1.8,
+            }
+        }
+
+
+class ConsultaVozResponse(BaseModel):
+    """Respuesta de una consulta por voz: transcripción + resultado + audio opcional."""
+    pregunta_transcrita: str = Field(..., description="Texto transcrito del audio de entrada.")
+    resultado: ConsultaResponse = Field(..., description="Respuesta estructurada (igual que el endpoint de texto).")
+    audio_base64: Optional[str] = Field(
+        None, description="Resumen hablado en WAV (base64), solo si responder_voz=true."
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "pregunta_transcrita": "cuántos clientes hay por sector",
+                "resultado": {
+                    "origen": "cartera_db",
+                    "tipo": "grafico",
+                    "titulo": "Clientes por sector",
+                    "texto": "Gráfico generado con 6 categoría(s).",
+                    "tabla": {"columnas": ["sector", "cantidad"], "filas": [["Oil & Gas", 20]], "total_filas": 6, "truncado": False},
+                    "grafico": {"tipo_grafico": "bar", "etiquetas": ["Oil & Gas"], "series": [{"label": "cantidad", "data": [20]}]},
+                    "meta": {"origen_tipo": "sql_mysql", "consulta_generada": "SELECT sector, COUNT(*) ...", "candidatos": ["clientes"], "advertencias": []},
+                    "tiempo_respuesta": 2.1,
+                },
+                "audio_base64": "UklGRiQAAABXQVZF...(WAV en base64)...",
             }
         }
 

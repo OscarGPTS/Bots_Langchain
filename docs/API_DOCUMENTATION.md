@@ -637,13 +637,19 @@ acotar el contexto enviado al LLM. La respuesta es un **objeto estructurado**
 {
   "consulta": "Dame una tabla de todos los empleados",
   "origen": "rh_api",
-  "formato": null
+  "formato": null,
+  "usuario": "Óscar"
 }
 ```
 - `consulta` (string, required): lo que pide el usuario en lenguaje natural.
 - `origen` (string, required): clave del origen en el catálogo (`rh_api`, `ventas_db`, …).
 - `formato` (string, opcional): fuerza la salida → `texto` | `tabla` | `grafico`. Si se
   omite, la IA decide.
+- `usuario` (string, opcional): nombre de quien consulta; personaliza el `texto`/audio
+  de respuesta (p.ej. *"Óscar, aquí tienes el resultado: 87 registros."*).
+- `objetivo` (string, opcional): **tabla (SQL) o recurso (REST) específico** a consultar.
+  Si se indica, se ignora el matcher por palabras clave y la IA trabaja SOLO sobre esa
+  entidad → más preciso y con menos errores. Ver "Consulta dirigida" abajo.
 
 **Response (objeto estructurado):**
 ```json
@@ -780,6 +786,166 @@ se **valida como solo-lectura** y `meta.consulta_generada` devuelve el SQL ejecu
 SELECT DATE_FORMAT(fecha,'%Y-%m') AS mes, SUM(total) AS total
 FROM ordenes WHERE fecha >= '2026-01-01' GROUP BY mes ORDER BY mes LIMIT 500
 ```
+
+---
+
+### 🧪 Ejemplo LOCAL probado: BD `cartera_clientes` (MySQL/MariaDB)
+
+Origen `cartera_db` mapeado al esquema real del proyecto Laravel (tablas `clientes`,
+`contactos_cliente`, `proyectos`, `cotizaciones`, `users`).
+
+**Configuración:**
+```env
+# .env
+CONSULTAS_ENABLED=true
+LLM_PROVIDER=opencode
+CARTERA_DB_URL=mysql+pymysql://root@127.0.0.1:3306/cartera_clientes
+```
+```yaml
+# config/rules.yaml  (extracto)
+origenes:
+  cartera_db:
+    tipo: sql_mysql
+    dsn_env: CARTERA_DB_URL
+    tablas:
+      - nombre: clientes
+        keys: [cliente, clientes, cuenta, cartera, razon, empresa]
+        columnas: [{nombre: razon_social}, {nombre: sector}, {nombre: activo}, ...]
+      - nombre: proyectos
+        keys: [proyecto, proyectos, oportunidad, oferta, cp, dn]
+        columnas: [{nombre: monto_usd}, {nombre: estado}, {nombre: cliente_id}, ...]
+```
+
+**a) Listado → `tabla`** (`POST /api/v1/consultas/`):
+```json
+{ "consulta": "top 5 proyectos por monto en usd", "origen": "cartera_db" }
+```
+→ `tipo:"tabla"`, `meta.consulta_generada`:
+```sql
+SELECT id, cp_numero, dn_numero, monto_usd, estado FROM proyectos ORDER BY monto_usd DESC LIMIT 5
+```
+
+**b) Agregación → `grafico`** (Fase 2):
+```json
+{ "consulta": "cuántos clientes hay por sector", "origen": "cartera_db" }
+```
+→ `tipo:"grafico"` (la BD agrega con `GROUP BY`):
+```json
+{
+  "tipo": "grafico",
+  "titulo": "Clientes por sector",
+  "grafico": {
+    "tipo_grafico": "bar",
+    "etiquetas": ["Oil & Gas", "Gasoductos", "Refinación", "Infraestructura", "Industrial"],
+    "series": [{ "label": "cantidad", "data": [20, 16, 2, 2, 1] }]
+  },
+  "tabla": { "columnas": ["sector", "cantidad"], "total_filas": 6, "truncado": false },
+  "meta": { "origen_tipo": "sql_mysql", "consulta_generada": "SELECT sector, COUNT(id) AS cantidad FROM clientes GROUP BY sector ORDER BY cantidad DESC LIMIT 500" }
+}
+```
+
+**Probar desde Swagger:** abre **http://localhost:8000/docs** → grupo **Consultas** →
+`POST /api/v1/consultas/` → *Try it out* → pega el body → *Execute*.
+
+PowerShell:
+```powershell
+$body = @{ consulta = "cuántos clientes hay por sector"; origen = "cartera_db" } | ConvertTo-Json
+Invoke-RestMethod "http://localhost:8000/api/v1/consultas/" -Method POST -Body $body -ContentType "application/json" | ConvertTo-Json -Depth 8
+```
+
+> ⚠️ **Seguridad (entorno local):** `root` sin contraseña tiene permisos totales; aquí la
+> garantía de solo-lectura recae en la **validación de SQL** + `SET SESSION TRANSACTION
+> READ ONLY`. Para producción, crea un usuario con `GRANT SELECT` y usa ese DSN.
+
+---
+
+### 🎯 Consulta dirigida (`objetivo`) y relaciones (FK)
+
+Para módulos específicos conviene **fijar la tabla/recurso** con `objetivo`, en vez de
+dejar que el matcher la deduzca. Reduce ambigüedad y errores:
+
+```json
+{ "consulta": "estadísticas de los proyectos de este mes", "origen": "cartera_db", "objetivo": "proyectos" }
+```
+
+**Relaciones por clave foránea (JOIN).** Si la consulta cruza entidades (p.ej. proyectos
+↔ cliente), declara la relación en `config/rules.yaml`. El generador recibe el JOIN y el
+validador permite también la tabla relacionada (allowlist ampliada):
+
+```yaml
+tablas:
+  - nombre: proyectos
+    keys: [proyecto, proyectos, oportunidad, oferta]
+    relaciones:
+      - { tabla: clientes, on: "proyectos.cliente_id = clientes.id", descripcion: "Cliente del proyecto" }
+    columnas: [ { nombre: monto_usd }, { nombre: cliente_id }, { nombre: fecha_envio }, ... ]
+```
+
+Ejemplo real validado — `objetivo: "proyectos"` + *"monto total por cliente, top 5"*:
+```sql
+SELECT c.razon_social, SUM(p.monto_usd) AS total_monto
+FROM proyectos AS p JOIN clientes AS c ON p.cliente_id = c.id
+GROUP BY c.id, c.razon_social ORDER BY total_monto DESC LIMIT 5
+```
+→ tabla con SEDENA $33.3M, Protexa $1.7M, … (`meta.candidatos = ["proyectos"]`).
+
+> **Dos estrategias para limitar y reducir errores:** (1) `objetivo` + `relaciones` para
+> que el LLM navegue solo por donde definiste; (2) preparar **recursos REST** acotados
+> (`endpoint` + `params_permitidos`) que ya devuelvan exactamente la información deseada.
+
+---
+
+### 🎙️ Consulta por voz
+
+**Endpoint:** `POST /api/v1/consultas/voz` (multipart/form-data)
+
+Recibe audio, lo transcribe (STT) y lo procesa como una consulta normal
+(NL→SQL/API, solo lectura), devolviendo el **objeto estructurado** + un **resumen
+hablado** opcional. Reutiliza la misma configuración de voz que `/api/v1/voz`.
+
+**Campos (form-data):**
+- `file` (archivo, required): audio `webm/wav/mp3/ogg/m4a`.
+- `origen` (string, required): clave del origen (`cartera_db`, `rh_api`, …).
+- `formato` (string, opcional): fuerza `texto | tabla | grafico`.
+- `responder_voz` (bool, opcional, default `true`): incluir resumen en audio.
+- `usuario` (string, opcional): nombre de quien consulta, para personalizar la respuesta.
+- `objetivo` (string, opcional): tabla/recurso específico a consultar (omite el matcher).
+
+**Requisitos:** `VOICE_ENABLED=true` y `CONSULTAS_ENABLED=true`.
+
+```bash
+curl -X POST "https://bots.tech-energy.lat/api/v1/consultas/voz" \
+  -F "file=@pregunta.webm" \
+  -F "origen=cartera_db" \
+  -F "usuario=Óscar" \
+  -F "responder_voz=true"
+```
+
+**Respuesta (`ConsultaVozResponse`):**
+```json
+{
+  "pregunta_transcrita": "cuántos clientes hay por sector",
+  "resultado": {
+    "origen": "cartera_db",
+    "tipo": "tabla",
+    "titulo": "Cantidad de clientes por sector",
+    "texto": "Óscar, aquí tienes el resultado: 6 registro(s).",
+    "tabla": { "columnas": ["sector", "cantidad"], "filas": [["Oil & Gas", 20]], "total_filas": 6, "truncado": false },
+    "grafico": null,
+    "meta": { "origen_tipo": "sql_mysql", "consulta_generada": "SELECT sector, COUNT(*) AS cantidad FROM clientes GROUP BY sector ORDER BY cantidad DESC LIMIT 500", "candidatos": ["clientes"], "advertencias": [] },
+    "tiempo_respuesta": 2.3
+  },
+  "audio_base64": "UklGRiQAAABXQVZF...(resumen hablado en WAV)..."
+}
+```
+
+> El audio **no dicta las filas** (sería enorme): lee una frase corta y personalizada
+> (`resultado.texto`), p.ej. *"Óscar, aquí tienes el resultado: 6 registros."* Para
+> tipo=`texto` (un dato puntual) sí lee la respuesta real. La tabla/gráfico se pintan
+> desde el objeto `resultado`.
+
+**Códigos:** `503` voz o consultas deshabilitado / faltan dependencias; `413` audio
+muy grande; `422` audio vacío/ininteligible; `400` origen/consulta/SQL inválido.
 
 ---
 
