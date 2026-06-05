@@ -280,7 +280,27 @@ bot (allowlist). **No contiene secretos**: las credenciales/URLs se referencian 
 
 ### Origen SQL (MySQL/MariaDB)
 
+**Conexión — dos formas (elige una por origen):**
+
 ```yaml
+# A) Estilo Laravel (recomendado): componentes por prefijo. No requiere URL-encodear
+#    la contraseña. Lee {PREFIJO}_HOST, _PORT, _DATABASE, _USERNAME, _PASSWORD del .env.
+origenes:
+  cartera_db:
+    tipo: sql_mysql
+    conexion_prefijo: DB            # → DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD
+```
+```env
+# .env (estilo Laravel)
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=cartera_clientes
+DB_USERNAME=cartera_ro
+DB_PASSWORD=tu_password            # se URL-encodea solo; '@', ':' etc. sin problema
+```
+```yaml
+# B) DSN completo en una variable (alternativa).
 origenes:
   cartera_db:
     tipo: sql_mysql
@@ -334,7 +354,8 @@ origenes:
 | Campo | Ámbito | Descripción |
 |-------|--------|-------------|
 | `tipo` | origen | `sql_mysql` \| `rest_api` |
-| `dsn_env` | SQL | Nombre de la var de entorno con el DSN (usuario read-only) |
+| `dsn_env` | SQL | Nombre de la var de entorno con el DSN completo (usuario read-only) |
+| `conexion_prefijo` | SQL | Alternativa estilo Laravel: prefijo de variables `{P}_HOST/_PORT/_DATABASE/_USERNAME/_PASSWORD` |
 | `base_url_env` | REST | Nombre de la var de entorno con la base URL |
 | `max_filas`, `timeout` | origen | Topes locales (acotados por los globales del `.env`) |
 | `tablas[]` / `recursos[]` | origen | Entidades expuestas |

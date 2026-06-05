@@ -16,16 +16,13 @@ def ejecutar(clave_origen: str, origen: Dict, sql: str) -> Tuple[List[str], List
     El SQL ya viene validado por `seguridad_sql`. Se materializan como máximo
     `max_filas` filas (tope del origen acotado por CONSULTAS_MAX_FILAS).
     """
-    dsn_env = origen.get("dsn_env")
-    if not dsn_env:
-        raise ValueError(f"El origen '{clave_origen}' no define 'dsn_env'.")
-
     max_filas = min(
         int(origen.get("max_filas", settings.CONSULTAS_MAX_FILAS)),
         settings.CONSULTAS_MAX_FILAS,
     )
 
-    engine = obtener_engine(clave_origen, dsn_env)
+    # El engine resuelve la conexión desde dsn_env o conexion_prefijo (estilo Laravel).
+    engine = obtener_engine(clave_origen, origen)
 
     # Auditoría: registrar el SQL ejecutado (sin credenciales).
     logger.info("[consultas] origen=%s SQL=%s", clave_origen, sql)

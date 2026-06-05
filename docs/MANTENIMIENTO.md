@@ -26,6 +26,18 @@ mantenimiento aunque el responsable no esté.
 
 ## ⚡ Aplicar cambios (lo más común)
 
+### Opción rápida: script de despliegue
+
+```bash
+cd /home/www/Bots_Langchain
+bash scripts/desplegar.sh            # pull → instala deps si cambió requirements → restart → health-check
+bash scripts/desplegar.sh --reload   # igual pero sin downtime (requiere ExecReload, ver más abajo)
+```
+El script detecta si cambió `requirements.txt` (e instala solo en ese caso), omite el
+reinicio si **solo** cambió documentación, verifica que el servicio quede `active` y
+hace health-check de `/health` y `/api/v1/consultas/health`. No toca `.env` ni
+`config/rules.yaml` (no versionados). Para hacerlo manual, sigue los casos de abajo.
+
 Conéctate por SSH y sitúate en el proyecto:
 ```bash
 cd /home/www/Bots_Langchain

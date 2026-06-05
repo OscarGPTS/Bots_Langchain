@@ -45,7 +45,13 @@ origenes:
   ventas_db:
     tipo: sql_mysql
     descripcion: "Base de datos de ventas (solo lectura)."
+    # Conexión: elige UNA de las dos formas.
+    #   A) DSN completo en una variable:
     dsn_env: VENTAS_DB_URL          # mysql+pymysql://ro_bot:***@host:3306/ventas
+    #   B) Estilo Laravel (componentes por prefijo; no requiere URL-encodear la
+    #      contraseña). Comenta 'dsn_env' y usa, p.ej.:
+    #   conexion_prefijo: VENTAS    # lee VENTAS_HOST, VENTAS_PORT, VENTAS_DATABASE,
+    #                               #     VENTAS_USERNAME, VENTAS_PASSWORD
     max_filas: 500                  # tope local (no supera CONSULTAS_MAX_FILAS)
     timeout: 8                      # segundos máx. de ejecución
     tablas:
