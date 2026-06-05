@@ -158,6 +158,68 @@ Cloudflare. Solo es relevante si:
 
 ---
 
+## ⚙️ Panel de configuración (parámetros operativos)
+
+Hay un panel web para ajustar **parámetros operativos no sensibles** sin entrar por SSH
+(flags, modelo, límites, timeouts). **Los secretos** (API keys, DSN, tokens) **NO** se
+gestionan aquí: se cambian por bash editando el `.env`.
+
+- **URL:** `https://bots.tech-energy.lat/api/v1/admin/` (protegido por Cloudflare ZT).
+- **Requisito:** definir `ADMIN_TOKEN` en el `.env`; el panel lo pide en el navegador y lo
+  envía como header `X-Admin-Token`. Si `ADMIN_TOKEN` está vacío, el panel queda
+  deshabilitado (403).
+
+**Qué hace al guardar:**
+- Escribe los cambios en el `.env` (preservando comentarios y el resto de variables).
+- Aplica **en caliente** los parámetros marcados *"en caliente"* (no hace falta reiniciar):
+  `CONSULTAS_ENABLED`, `VOICE_ENABLED`, `VOICE_BACKEND`, `LLM_PROVIDER` (módulo de
+  consultas), `CONSULTAS_MAX_FILAS`, `CONSULTAS_SQL_TIMEOUT`, `CONSULTAS_REST_TIMEOUT`.
+- Para los marcados *"requiere reinicio"* (modelos de los bots RAG: `OLLAMA_MODEL`,
+  `OPENAI_MODEL_*`), guarda el valor y muestra el comando exacto:
+  ```bash
+  sudo systemctl restart bots
+  ```
+  > Solo reinicia **el servicio**, no el servidor. `LLM_PROVIDER` aplica al instante al
+  > módulo de consultas; para que los **bots RAG** lo tomen, también requiere ese reinicio.
+
+**API equivalente** (por si se integra en otra UI):
+```bash
+# Leer parámetros editables
+curl https://bots.tech-energy.lat/api/v1/admin/config -H "X-Admin-Token: <ADMIN_TOKEN>"
+# Actualizar
+curl -X PUT https://bots.tech-energy.lat/api/v1/admin/config \
+  -H "X-Admin-Token: <ADMIN_TOKEN>" -H "Content-Type: application/json" \
+  -d '{"cambios": {"CONSULTAS_MAX_FILAS": 1000, "LLM_PROVIDER": "opencode"}}'
+```
+
+> **Credenciales/secretos:** se cambian editando el `.env` por SSH (`nano .env` +
+> `sudo systemctl restart bots`). Un flujo seguro con Auth0/Google para secretos queda
+> como mejora futura.
+
+### ⚠️ Importante: varios workers (Gunicorn `-w 4`)
+
+El servicio corre con **4 workers** (procesos independientes). El "en caliente" aplica el
+cambio **solo en el worker** que atendió la petición; el `.env` queda actualizado para
+todos. Para que **todos los workers** tomen el valor sin cortar el servicio, haz un
+**reload con recarga elegante** (sin downtime):
+
+```bash
+sudo systemctl reload bots     # requiere ExecReload (ver abajo); si no, usa restart
+```
+
+Habilitar `reload` (una sola vez) — añade esta línea en `[Service]` de
+`/etc/systemd/system/bots.service` y `sudo systemctl daemon-reload`:
+```ini
+ExecReload=/bin/kill -s HUP $MAINPID
+```
+Gunicorn recarga sus workers con SIGHUP (releen el `.env`) sin tirar el servicio. Si no
+configuras `ExecReload`, usa `sudo systemctl restart bots` (breve corte). Resumen:
+- **Cambio "en caliente"** → efecto inmediato en 1 worker (suficiente para probar).
+- **`reload`** → todos los workers, sin downtime (recomendado tras guardar).
+- **`restart`** → todos los workers; obligatorio para los campos "requiere reinicio".
+
+---
+
 ## 🧱 Notas por módulo
 
 ### Módulo de Consultas a Datos
