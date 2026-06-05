@@ -11,6 +11,7 @@ from app.core.logging import get_logger
 from app.schemas.consultas import ConsultaResponse
 from app.services.consultas import (
     catalogo,
+    conversacional,
     ejecutor_rest,
     ejecutor_sql,
     formateador,
@@ -49,6 +50,13 @@ def procesar_consulta(
         raise ConsultaError(f"Origen '{origen_clave}' no existe. Disponibles: {disponibles}.")
 
     tipo_origen = origen.get("tipo")
+
+    # Capa conversacional: saludos / agradecimientos / ayuda → respuesta amigable,
+    # sin generar SQL ni consultar la BD. Se omite si se fijó un `objetivo` concreto.
+    if not objetivo:
+        intencion = conversacional.detectar(consulta)
+        if intencion:
+            return conversacional.responder(intencion, origen, origen_clave, usuario, inicio)
 
     if objetivo:
         # Modo específico: usar solo la tabla/recurso indicado (sin matcher).

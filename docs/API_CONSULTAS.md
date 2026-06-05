@@ -65,6 +65,22 @@ consulta + origen ──► [matcher/objetivo] ──► [LLM: NL→SQL/REST] �
 **Base URL:** `https://bots.tech-energy.lat` (prod) · `http://localhost:8000` (local).
 **Prefijo:** `/api/v1/consultas`.
 
+### Mensajes conversacionales (saludos / ayuda)
+
+Antes de intentar consultar datos, el bot reconoce mensajes que **no** son una consulta
+(saludos, agradecimientos, despedidas y peticiones de ayuda) y responde de forma amigable,
+**sin generar SQL ni tocar la base de datos**. Así un `"hola"` o `"¿qué puedes hacer?"` no
+produce errores. La respuesta llega como `tipo: "texto"` (con `meta.consulta_generada: null`).
+
+| Entrada | Respuesta |
+|---------|-----------|
+| `"hola"` | Saludo + qué puede consultar el origen |
+| `"¿qué puedes hacer?"`, `"ayuda"`, `"no sé qué preguntar"` | Lista de entidades del origen + ejemplos |
+| `"gracias"`, `"adiós"` | Respuesta cordial |
+
+> Es determinista (sin coste de LLM) y respeta `usuario` para personalizar. Para mensajes
+> que sí son consultas reales, el flujo continúa normal.
+
 ---
 
 ## 🔌 Endpoints
