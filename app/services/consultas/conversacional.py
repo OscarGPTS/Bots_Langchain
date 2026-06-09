@@ -13,6 +13,7 @@ import time
 import unicodedata
 from typing import Dict, List, Optional
 
+from app.core.config import settings
 from app.schemas.consultas import ConsultaMeta, ConsultaResponse, TipoSalida
 from app.services.consultas import catalogo
 
@@ -100,9 +101,11 @@ def responder(
     """Construir una respuesta conversacional (tipo=texto) sin tocar la base de datos."""
     nombre = _coma_nombre(usuario)
 
+    bot = settings.APP_NAME
+
     if intencion == "ayuda":
         titulo = "¿Qué puedo hacer?"
-        texto = f"¡Hola{nombre}! Soy el asistente de consultas. {_capacidades(origen)}"
+        texto = f"¡Hola{nombre}! Soy {bot}, tu asistente de consultas. {_capacidades(origen)}"
     elif intencion == "agradecimiento":
         titulo = "De nada"
         texto = f"¡Con gusto{nombre}! ¿Quieres hacer otra consulta?"
@@ -112,7 +115,7 @@ def responder(
     else:  # saludo
         titulo = "Hola"
         texto = (
-            f"¡Hola{nombre}! Soy el asistente de consultas de datos. "
+            f"¡Hola{nombre}! Soy {bot}, tu asistente de consultas de datos. "
             f"{_capacidades(origen)} ¿Qué te gustaría consultar?"
         )
 

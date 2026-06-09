@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicializar recursos al arrancar y limpiar al cerrar."""
-    logger.info("Iniciando API de Bots de Documentos")
+    logger.info("Iniciando %s", settings.APP_NAME)
 
     try:
         get_bot_simple()
@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="API Bots de Documentos",
+    title=f"{settings.APP_NAME} — API",
     description="""
     API REST para interactuar con bots inteligentes de búsqueda y análisis de documentos.
 
@@ -103,7 +103,7 @@ app.include_router(api_router)
 async def root():
     """Obtener información general de la API y enlaces a recursos."""
     return {
-        "nombre": "API Bots de Documentos",
+        "nombre": settings.APP_NAME,
         "version": "1.0.0",
         "estado": "activo",
         "documentacion": "/docs",
@@ -123,7 +123,7 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": time.time(),
-        "service": "API Bots de Documentos",
+        "service": settings.APP_NAME,
         "version": "1.0.0",
     }
 

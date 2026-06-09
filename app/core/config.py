@@ -29,6 +29,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # ===== Identidad del bot/aplicación =====
+    # Nombre global del asistente. Se usa en la API (título/health), logs y respuestas.
+    APP_NAME: str = "EVIA"
+
     # ===== Paperless-ngx =====
     PAPERLESS_URL: Optional[str] = None
     PAPERLESS_TOKEN: Optional[str] = None
