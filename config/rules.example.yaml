@@ -45,6 +45,12 @@ origenes:
   ventas_db:
     tipo: sql_mysql
     descripcion: "Base de datos de ventas (solo lectura)."
+    # Identificadores alternativos que el cliente puede enviar como 'origen' (nombre del
+    # sistema, tags, URLs). Únicos entre orígenes. Comparación sin mayúsculas/esquema/'/'.
+    alias:
+      - ventas
+      - sistema de ventas
+      - https://ventas.tech-energy.lat
     # Conexión: elige UNA de las dos formas.
     #   A) DSN completo en una variable:
     dsn_env: VENTAS_DB_URL          # mysql+pymysql://ro_bot:***@host:3306/ventas
@@ -54,6 +60,11 @@ origenes:
     #                               #     VENTAS_USERNAME, VENTAS_PASSWORD
     max_filas: 500                  # tope local (no supera CONSULTAS_MAX_FILAS)
     timeout: 8                      # segundos máx. de ejecución
+    # 'contexto' (opcional): reglas de negocio/glosario del origen. Se inyecta al prompt
+    # para guiar al modelo (fórmulas, convenciones, filtros por defecto, sinónimos...).
+    contexto: |
+      Sistema de ventas. "Importe" = ordenes.total. Una venta está "pagada" si
+      ordenes.estado = 'pagada'. Nombre del cliente = usuarios.nombre.
     tablas:
       - nombre: usuarios
         keys: [usuario, usuarios, user, users, cliente, clientes, registro, registros]
@@ -73,6 +84,15 @@ origenes:
         # también las tablas relacionadas. Útil para consultas que cruzan entidades.
         relaciones:
           - {tabla: usuarios, on: "ordenes.usuario_id = usuarios.id", descripcion: "Usuario que hizo la orden"}
+        # 'contexto' por tabla (opcional): notas específicas de esta tabla.
+        contexto: "Para totales de ventas usa SUM(total) y filtra estado='pagada' salvo que se pida otro."
+        # 'ejemplos' (opcional, few-shot): enseñan al modelo a reproducir vistas/fórmulas.
+        # Se inyectan cuando esta tabla es candidata. SQL ilustrativo (no se ejecuta).
+        ejemplos:
+          - pregunta: "Total vendido por mes en una gráfica de líneas"
+            sql: >
+              SELECT DATE_FORMAT(fecha, '%Y-%m') AS mes, SUM(total) AS total
+              FROM ordenes WHERE estado = 'pagada' GROUP BY mes ORDER BY mes
         columnas:
           - {nombre: id, tipo: int}
           - {nombre: usuario_id, tipo: int, descripcion: "FK a usuarios.id"}

@@ -160,6 +160,7 @@ class OrigenInfo(BaseModel):
     tipo: str
     descripcion: Optional[str] = None
     tablas_o_recursos: List[str] = Field(default_factory=list)
+    alias: List[str] = Field(default_factory=list, description="Identificadores alternativos aceptados (nombres, tags, URLs).")
 
 
 class ConsultasHealthResponse(BaseModel):

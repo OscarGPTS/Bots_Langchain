@@ -12,7 +12,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Cargar el .env también en os.environ. pydantic-settings solo mapea los campos
 # declarados; las variables DSN/URL arbitrarias que referencia rules.yaml
 # (dsn_env/base_url_env) se leen con os.getenv y necesitan estar en el entorno.
-load_dotenv()
+#
+# override=True => el .env es la fuente de verdad y PISA variables de entorno
+# preexistentes (p.ej. una DB_USERNAME que quedó fijada en la sesión de la shell).
+# Es lo esperado aquí: la configuración vive en .env (no se inyecta por systemd).
+load_dotenv(override=True)
 
 
 class Settings(BaseSettings):
@@ -67,6 +71,9 @@ class Settings(BaseSettings):
 
     # ===== API de RH (opcional) =====
     API_RH_URL: Optional[str] = None
+
+    # ===== Servidor API (desarrollo local) =====
+    API_PORT: int = 8001
 
     # ===== Base de datos SQLite (opcional) =====
     DATABASE_PATH: str = "data/empresa.db"

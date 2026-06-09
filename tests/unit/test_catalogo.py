@@ -1,4 +1,6 @@
-"""Tests offline del catálogo: búsqueda por nombre y expansión de relaciones (FK)."""
+"""Tests offline del catálogo: búsqueda por nombre, relaciones (FK) y resolución por alias."""
+import pytest
+
 from app.services.consultas import catalogo
 
 ORIGEN = {
@@ -39,3 +41,43 @@ def test_expandir_relaciones_sin_relaciones():
     tablas, joins = catalogo.expandir_relaciones(ORIGEN, candidatos)
     assert [t["nombre"] for t in tablas] == ["clientes"]
     assert joins == []
+
+
+# --- Resolución de origen por clave canónica / alias / URL ---
+
+ORIGENES_FAKE = {
+    "origenes": {
+        "cartera_db": {
+            "tipo": "sql_mysql",
+            "alias": ["cartera", "Cartera de Clientes", "https://cartera-clientes.tech-energy.lat/", "http://localhost:8001"],
+        },
+        "rh_api": {"tipo": "rest_api", "alias": ["rh", "recursos humanos"]},
+    }
+}
+
+
+@pytest.fixture
+def cargar_fake(monkeypatch):
+    monkeypatch.setattr(catalogo, "_cache", ORIGENES_FAKE)
+    monkeypatch.setattr(catalogo, "_cache_error", None)
+
+
+@pytest.mark.parametrize("identificador,esperado", [
+    ("cartera_db", "cartera_db"),            # clave canónica
+    ("CARTERA_DB", "cartera_db"),            # case-insensitive
+    ("cartera", "cartera_db"),               # alias simple
+    ("Cartera de Clientes", "cartera_db"),   # alias con espacios/mayúsculas
+    ("https://cartera-clientes.tech-energy.lat/", "cartera_db"),  # URL con esquema y / final
+    ("cartera-clientes.tech-energy.lat", "cartera_db"),          # sin esquema
+    ("http://localhost:8001/", "cartera_db"),                    # URL con / final
+    ("rh", "rh_api"),
+    ("recursos humanos", "rh_api"),
+])
+def test_resolver_origen(cargar_fake, identificador, esperado):
+    clave, defn = catalogo.resolver_origen(identificador)
+    assert clave == esperado and defn is not None
+
+
+def test_resolver_origen_desconocido(cargar_fake):
+    clave, defn = catalogo.resolver_origen("no_existe")
+    assert clave is None and defn is None

@@ -44,10 +44,14 @@ def procesar_consulta(
 
     inicio = time.time()
 
-    origen = catalogo.obtener_origen(origen_clave)
+    # Resolver por clave canónica O por alias (nombre del sistema, tag o URL).
+    clave_canonica, origen = catalogo.resolver_origen(origen_clave)
     if origen is None:
         disponibles = ", ".join(catalogo.listar_origenes().keys()) or "(ninguno)"
-        raise ConsultaError(f"Origen '{origen_clave}' no existe. Disponibles: {disponibles}.")
+        raise ConsultaError(
+            f"No reconozco el origen '{origen_clave}'. Orígenes disponibles: {disponibles}."
+        )
+    origen_clave = clave_canonica  # usar siempre la canónica (caché de engine, logs, respuesta)
 
     tipo_origen = origen.get("tipo")
 
@@ -102,7 +106,9 @@ def _procesar_sql(consulta, origen_clave, origen, candidatos, nombres, formato, 
     tablas_contexto, join_hints = catalogo.expandir_relaciones(origen, candidatos)
     allowlist = [t.get("nombre", "") for t in tablas_contexto]  # incluye relacionadas
 
-    generado = generador.generar_sql(consulta, tablas_contexto, max_filas, join_hints)
+    generado = generador.generar_sql(
+        consulta, tablas_contexto, max_filas, join_hints, contexto_origen=origen.get("contexto")
+    )
     sql_seguro, advertencias = seguridad_sql.validar_y_asegurar(
         generado["sql"], tablas_permitidas=allowlist, max_filas=max_filas
     )
@@ -173,6 +179,7 @@ def estado() -> dict:
             "tipo": defn.get("tipo", "?"),
             "descripcion": defn.get("descripcion"),
             "tablas_o_recursos": catalogo.nombres_items(defn),
+            "alias": catalogo.alias_de(defn),
         }
         for clave, defn in origenes.items()
     ]

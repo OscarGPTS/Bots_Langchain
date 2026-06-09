@@ -153,7 +153,7 @@ produce errores. La respuesta llega como `tipo: "texto"` (con `meta.consulta_gen
 | Campo | Req. | Tipo | Descripción |
 |-------|------|------|-------------|
 | `consulta` | ✅ | string (3–1000) | Lo que pide el usuario en lenguaje natural |
-| `origen` | ✅ | string | Clave del origen (`cartera_db`, `rh_api`, …) |
+| `origen` | ✅ | string | Identificador del origen: su **clave** (`cartera_db`) o cualquier **alias** (nombre del sistema, tag o URL). Ver "Identificar el origen" abajo. |
 | `formato` | — | `texto`\|`tabla`\|`grafico` | Fuerza el tipo de salida (si se omite, lo decide la IA) |
 | `objetivo` | — | string | **Tabla/recurso específico**: omite el matcher y trabaja solo sobre esa entidad (más preciso) |
 | `usuario` | — | string | Nombre de quien consulta; personaliza `texto`/audio |
@@ -272,6 +272,37 @@ curl -X POST "http://localhost:8000/api/v1/consultas/voz" \
 
 ---
 
+## 🏷️ Identificar el origen (clave o alias)
+
+El campo `origen` acepta tanto la **clave canónica** como cualquier **alias** declarado en
+`rules.yaml`. Los alias permiten que el cliente envíe el nombre del sistema, un tag o una
+**URL**, sin tener que conocer la clave interna. La comparación es tolerante: ignora
+mayúsculas, el esquema `http(s)://` y el `/` final.
+
+```yaml
+origenes:
+  cartera_db:                       # clave canónica (uso interno, logs, respuesta)
+    alias:
+      - cartera
+      - "Cartera de Clientes"
+      - https://cartera-clientes.tech-energy.lat
+      - http://localhost:8001
+```
+
+Con eso, todas estas peticiones resuelven al mismo origen (`origen` en la respuesta será
+siempre la clave canónica `cartera_db`):
+```json
+{ "consulta": "...", "origen": "cartera" }
+{ "consulta": "...", "origen": "https://cartera-clientes.tech-energy.lat/" }
+{ "consulta": "...", "origen": "CARTERA_DB" }
+```
+
+> Los alias deben ser **únicos entre orígenes** (si dos orígenes comparten un alias, la
+> resolución es ambigua). `GET /health` lista los alias de cada origen para que el cliente
+> sepa qué puede enviar.
+
+---
+
 ## ⚙️ Configurar orígenes (`rules.yaml`)
 
 El catálogo `config/rules.yaml` es la **única fuente de verdad** de qué puede consultar el
@@ -337,6 +368,37 @@ origenes:
         descripcion: "Empleados con departamento, área y puesto."
 ```
 
+### Dar contexto de negocio (escalable)
+
+Para que el bot "sepa por dónde ir" (fórmulas, convenciones, JOINs típicos) sin tocar
+código, usa dos campos en `rules.yaml`:
+
+- **`contexto`** (en el origen y/o en cada tabla): reglas de negocio en lenguaje natural.
+  Ej.: *"Monto esperado = SUM(monto_usd \* ponderacion / 100)"*, *"catálogos: filtra status = 1"*.
+- **`ejemplos`** (por tabla): pares `pregunta → sql` que el modelo replica adaptándolos.
+  Ideales para reproducir vistas/dashboards existentes.
+
+```yaml
+tablas:
+  - nombre: proyectos
+    contexto: "Oportunidades = tipo='oportunidad'. Esperado = SUM(monto_usd*ponderacion/100)."
+    ejemplos:
+      - pregunta: "KPIs de la cartera: bruto, esperado y eficiencia"
+        sql: >
+          SELECT SUM(monto_usd) AS bruto,
+                 SUM(monto_usd*ponderacion/100) AS esperado,
+                 ROUND(SUM(monto_usd*ponderacion/100)/NULLIF(SUM(monto_usd),0)*100,1) AS eficiencia_pct
+          FROM proyectos WHERE tipo='oportunidad' AND monto_usd > 0
+```
+
+> El contexto del origen se inyecta siempre; el contexto y los ejemplos de una tabla solo
+> cuando esa tabla es candidata (mantiene el prompt enfocado y los tokens bajos). Las
+> relaciones se resuelven de forma **transitiva** (hasta 2 saltos), así un ejemplo que
+> cruza `proyectos → historial → ponderaciones` funciona sin declarar cada salto a mano.
+>
+> Ejemplo real completo: origen `cartera_db` en [config/rules.yaml](../config/rules.yaml),
+> derivado de [CONTEXTO_GRAFICAS_DASHBOARD.md](CONTEXTO_GRAFICAS_DASHBOARD.md).
+
 ### Cómo agregar un nuevo origen (paso a paso)
 
 1. **Crea un usuario MySQL de solo lectura** (ver más abajo) y añade su DSN en `.env`
@@ -354,6 +416,7 @@ origenes:
 | Campo | Ámbito | Descripción |
 |-------|--------|-------------|
 | `tipo` | origen | `sql_mysql` \| `rest_api` |
+| `alias` | origen | Identificadores alternativos aceptados como `origen` (nombres, tags, URLs). Únicos entre orígenes |
 | `dsn_env` | SQL | Nombre de la var de entorno con el DSN completo (usuario read-only) |
 | `conexion_prefijo` | SQL | Alternativa estilo Laravel: prefijo de variables `{P}_HOST/_PORT/_DATABASE/_USERNAME/_PASSWORD` |
 | `base_url_env` | REST | Nombre de la var de entorno con la base URL |
@@ -361,7 +424,9 @@ origenes:
 | `tablas[]` / `recursos[]` | origen | Entidades expuestas |
 | `keys[]` | entidad | Alias que el matcher busca en la consulta |
 | `columnas[]` | tabla | `{nombre, tipo, descripcion}` (guía al modelo) |
-| `relaciones[]` | tabla | `{tabla, on, descripcion}` — habilita JOIN y amplía la allowlist |
+| `relaciones[]` | tabla | `{tabla, on, descripcion}` — habilita JOIN y amplía la allowlist (transitivo hasta 2 saltos) |
+| `contexto` | origen y tabla | Reglas de negocio/glosario que se inyectan al prompt (fórmulas, convenciones, filtros por defecto) |
+| `ejemplos[]` | tabla | Few-shot `{pregunta, sql}`: enseñan a reproducir vistas/fórmulas del sistema. Se inyectan cuando la tabla es candidata |
 | `endpoint`, `lista_en`, `params_permitidos` | recurso REST | Ruta GET, ubicación de la lista en el JSON, params permitidos |
 
 ---

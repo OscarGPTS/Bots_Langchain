@@ -7,6 +7,7 @@ frase del usuario.
 import os
 import re
 import unicodedata
+from collections import deque
 from typing import Dict, List, Optional
 
 import yaml
@@ -70,8 +71,48 @@ def listar_origenes() -> Dict[str, Dict]:
 
 
 def obtener_origen(clave: str) -> Optional[Dict]:
-    """Definición de un origen por su clave, o None si no existe."""
+    """Definición de un origen por su clave EXACTA, o None si no existe."""
     return listar_origenes().get(clave)
+
+
+def _norm_id(valor: str) -> str:
+    """Normalizar un identificador de origen para comparar (alias/URL tolerante).
+
+    Minúsculas, sin acentos, sin esquema http(s):// y sin '/' final.
+    """
+    s = _normalizar(str(valor)).strip().rstrip("/")
+    for pre in ("https://", "http://"):
+        if s.startswith(pre):
+            s = s[len(pre):]
+    return s.rstrip("/")
+
+
+def resolver_origen(identificador: str) -> tuple:
+    """Resolver un origen por su clave canónica o por cualquiera de sus `alias`.
+
+    Acepta el nombre del sistema, un tag o una URL (ver `alias` en rules.yaml).
+    Devuelve (clave_canonica, definicion) o (None, None) si no se reconoce.
+    """
+    objetivo = _norm_id(identificador)
+    if not objetivo:
+        return None, None
+
+    origenes = listar_origenes()
+    # 1) Coincidencia con la clave canónica.
+    for clave, defn in origenes.items():
+        if _norm_id(clave) == objetivo:
+            return clave, defn
+    # 2) Coincidencia con algún alias.
+    for clave, defn in origenes.items():
+        for alias in defn.get("alias", []) or []:
+            if _norm_id(alias) == objetivo:
+                return clave, defn
+    return None, None
+
+
+def alias_de(origen: Dict) -> List[str]:
+    """Lista de alias declarados para un origen (para listados/health)."""
+    return [str(a) for a in (origen.get("alias", []) or [])]
 
 
 def _items_del_origen(origen: Dict) -> List[Dict]:
@@ -127,29 +168,48 @@ def item_por_nombre(origen: Dict, nombre: str) -> Optional[Dict]:
     return None
 
 
-def expandir_relaciones(origen: Dict, candidatos: List[Dict]) -> tuple:
+def expandir_relaciones(origen: Dict, candidatos: List[Dict], max_profundidad: int = 2) -> tuple:
     """Para orígenes SQL: añade las tablas relacionadas (FK) y arma los hints de JOIN.
 
-    Devuelve (tablas_contexto, join_hints):
-      - tablas_contexto: candidatos + tablas referenciadas en `relaciones` (con su
-        esquema), para que el LLM las conozca y el validador las permita.
-      - join_hints: textos "a.col = b.col" para guiar los JOIN en el prompt.
-    """
-    tablas = list(candidatos)
-    presentes = {_normalizar(str(t.get("nombre", ""))) for t in tablas}
-    join_hints: List[str] = []
+    Recorre el grafo de `relaciones` de forma transitiva hasta `max_profundidad`
+    saltos desde los candidatos (p.ej. proyectos → historial → ponderaciones), para
+    soportar JOINs de varios niveles. Maneja ciclos vía el conjunto `presentes`.
 
-    for t in candidatos:
+    Devuelve (tablas_contexto, join_hints):
+      - tablas_contexto: candidatos + tablas alcanzables (con su esquema), para que el
+        LLM las conozca y el validador las permita (allowlist).
+      - join_hints: textos "a.col = b.col" de las relaciones recorridas.
+    """
+    tablas: List[Dict] = []
+    presentes = set()
+    join_hints: List[str] = []
+    cola = deque()
+
+    for c in candidatos:
+        nombre = _normalizar(str(c.get("nombre", "")))
+        if nombre and nombre not in presentes:
+            presentes.add(nombre)
+            tablas.append(c)
+            cola.append((c, 0))
+
+    while cola:
+        t, prof = cola.popleft()
+        if prof >= max_profundidad:
+            continue
         for rel in t.get("relaciones", []) or []:
             rel_tabla = rel.get("tabla")
             cond = rel.get("on")
             if cond:
                 desc = f" ({rel['descripcion']})" if rel.get("descripcion") else ""
-                join_hints.append(f"{t.get('nombre')} ↔ {rel_tabla}: {cond}{desc}")
-            if rel_tabla and _normalizar(str(rel_tabla)) not in presentes:
+                hint = f"{t.get('nombre')} ↔ {rel_tabla}: {cond}{desc}"
+                if hint not in join_hints:
+                    join_hints.append(hint)
+            rel_norm = _normalizar(str(rel_tabla)) if rel_tabla else ""
+            if rel_norm and rel_norm not in presentes:
                 rel_def = item_por_nombre(origen, rel_tabla)
                 if rel_def:
+                    presentes.add(rel_norm)
                     tablas.append(rel_def)
-                    presentes.add(_normalizar(str(rel_tabla)))
+                    cola.append((rel_def, prof + 1))
 
     return tablas, join_hints

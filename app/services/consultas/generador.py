@@ -44,6 +44,30 @@ def _esquema_tablas(candidatos: List[Dict]) -> str:
     return "\n\n".join(bloques)
 
 
+def _notas_tablas(candidatos: List[Dict]) -> str:
+    """Notas de negocio por tabla (campo `contexto` de cada tabla candidata)."""
+    notas = [f"- {t['nombre']}: {t['contexto'].strip()}" for t in candidatos if t.get("contexto")]
+    return "\n".join(notas)
+
+
+def _ejemplos(candidatos: List[Dict], maximo: int = 6) -> str:
+    """Few-shot: ejemplos pregunta→SQL declarados en las tablas candidatas.
+
+    Enseñan al modelo a reproducir vistas/fórmulas del sistema de origen. Se aplanan
+    todos los `ejemplos` de las tablas candidatas y se recortan a `maximo`.
+    """
+    items = []
+    for t in candidatos:
+        for ej in t.get("ejemplos", []) or []:
+            if ej.get("pregunta") and ej.get("sql"):
+                items.append(ej)
+    items = items[:maximo]
+    if not items:
+        return ""
+    bloques = [f"- Pregunta: {e['pregunta']}\n  SQL: {' '.join(e['sql'].split())}" for e in items]
+    return "\n".join(bloques)
+
+
 def _esquema_recursos(candidatos: List[Dict]) -> str:
     """Texto compacto de los recursos REST candidatos (para el prompt intent)."""
     bloques = []
@@ -54,8 +78,18 @@ def _esquema_recursos(candidatos: List[Dict]) -> str:
     return "\n\n".join(bloques)
 
 
-def generar_sql(consulta: str, candidatos: List[Dict], max_filas: int, join_hints: Optional[List[str]] = None) -> Dict:
-    """NL -> {sql, titulo, tipo}. El SELECT se valida después con seguridad_sql."""
+def generar_sql(
+    consulta: str,
+    candidatos: List[Dict],
+    max_filas: int,
+    join_hints: Optional[List[str]] = None,
+    contexto_origen: Optional[str] = None,
+) -> Dict:
+    """NL -> {sql, titulo, tipo}. El SELECT se valida después con seguridad_sql.
+
+    `contexto_origen` son reglas de negocio del origen; las tablas pueden traer además
+    `contexto` (notas) y `ejemplos` (few-shot pregunta→SQL) que guían la generación.
+    """
     esquema = _esquema_tablas(candidatos)
     nombres = [t["nombre"] for t in candidatos]
 
@@ -74,6 +108,8 @@ def generar_sql(consulta: str, candidatos: List[Dict], max_filas: int, join_hint
         f"- Usa SOLO estas tablas y columnas: {', '.join(nombres)}.\n"
         f"- Incluye siempre un LIMIT (máximo {max_filas})."
         f"{bloque_joins}\n"
+        "- Respeta el CONTEXTO del negocio y, si hay EJEMPLOS, replica su estilo y fórmulas "
+        "adaptándolos a la pregunta.\n"
         "- tipo='tabla' si la pregunta pide un listado; 'texto' si pide un dato único o "
         "explicación; 'grafico' si pide graficar/visualizar/comparar magnitudes.\n"
         "- Si tipo='grafico', AGREGA en el propio SQL (GROUP BY, COUNT/SUM) y añade un "
@@ -82,7 +118,20 @@ def generar_sql(consulta: str, candidatos: List[Dict], max_filas: int, join_hint
         "exactos del SELECT.\n"
         'Responde SOLO con JSON: {"sql":"...","titulo":"...","tipo":"tabla|texto|grafico","grafico":{...}|null}'
     )
-    user = f"Esquema disponible:\n{esquema}\n\nPregunta del usuario:\n{consulta}"
+
+    # Construir el mensaje del usuario por secciones (solo las que existan).
+    secciones = []
+    if contexto_origen and contexto_origen.strip():
+        secciones.append(f"Contexto del negocio:\n{contexto_origen.strip()}")
+    secciones.append(f"Esquema disponible:\n{esquema}")
+    notas = _notas_tablas(candidatos)
+    if notas:
+        secciones.append(f"Notas de tablas:\n{notas}")
+    ejemplos = _ejemplos(candidatos)
+    if ejemplos:
+        secciones.append(f"Ejemplos de referencia (replica estilo y fórmulas):\n{ejemplos}")
+    secciones.append(f"Pregunta del usuario:\n{consulta}")
+    user = "\n\n".join(secciones)
 
     llm = obtener_llm()
     resp = llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
