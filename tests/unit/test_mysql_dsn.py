@@ -14,9 +14,10 @@ def test_estilo_laravel_encodea_password(monkeypatch):
     monkeypatch.setenv("DB_PORT", "3306")
     monkeypatch.setenv("DB_DATABASE", "cartera_clientes")
     monkeypatch.setenv("DB_USERNAME", "cartera_ro")
-    monkeypatch.setenv("DB_PASSWORD", "C@rtera_ReadOnly_2026")  # '@' debe ir como %40
+    monkeypatch.setenv("DB_PASSWORD", "p@ss:w0rd/test")  # caracteres especiales (ficticio)
     dsn = _resolver_dsn("cartera_db", {"conexion_prefijo": "DB"})
-    assert dsn == "mysql+pymysql://cartera_ro:C%40rtera_ReadOnly_2026@127.0.0.1:3306/cartera_clientes"
+    # '@' -> %40, ':' -> %3A, '/' -> %2F
+    assert dsn == "mysql+pymysql://cartera_ro:p%40ss%3Aw0rd%2Ftest@127.0.0.1:3306/cartera_clientes"
 
 
 def test_estilo_laravel_password_vacia(monkeypatch):

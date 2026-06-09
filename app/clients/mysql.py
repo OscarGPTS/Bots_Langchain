@@ -52,8 +52,12 @@ def _resolver_dsn(clave_origen: str, origen: Dict) -> str:
                 f"El origen '{clave_origen}' necesita al menos {prefijo}_DATABASE y "
                 f"{prefijo}_USERNAME en el .env."
             )
-        # La contraseña se URL-encodea (maneja '@', ':', '/', etc.). Si va vacía, sin ':'.
-        cred = f"{quote(user)}:{quote(password)}" if password else quote(user)
+        # Usuario y contraseña se URL-encodean por completo (safe="" para que '/' '@'
+        # ':' '?' etc. se escapen y el DSN sea válido). Si la contraseña va vacía, sin ':'.
+        cred = (
+            f"{quote(user, safe='')}:{quote(password, safe='')}"
+            if password else quote(user, safe="")
+        )
         return f"mysql+pymysql://{cred}@{host}:{port}/{database}"
 
     raise ValueError(
