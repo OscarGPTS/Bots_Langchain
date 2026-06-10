@@ -11,6 +11,7 @@ from app.core.logging import get_logger
 from app.schemas.consultas import ConsultaResponse
 from app.services.consultas import (
     catalogo,
+    contexto_rag,
     conversacional,
     ejecutor_rest,
     ejecutor_sql,
@@ -106,8 +107,16 @@ def _procesar_sql(consulta, origen_clave, origen, candidatos, nombres, formato, 
     tablas_contexto, join_hints = catalogo.expandir_relaciones(origen, candidatos)
     allowlist = [t.get("nombre", "") for t in tablas_contexto]  # incluye relacionadas
 
+    # Contexto semántico (vistas del sistema de origen); "" si no hay/no disponible.
+    contexto_vistas = contexto_rag.recuperar_contexto(consulta, origen_clave)
+
     generado = generador.generar_sql(
-        consulta, tablas_contexto, max_filas, join_hints, contexto_origen=origen.get("contexto")
+        consulta,
+        tablas_contexto,
+        max_filas,
+        join_hints,
+        contexto_origen=origen.get("contexto"),
+        contexto_vistas=contexto_vistas,
     )
     sql_seguro, advertencias = seguridad_sql.validar_y_asegurar(
         generado["sql"], tablas_permitidas=allowlist, max_filas=max_filas
@@ -190,4 +199,5 @@ def estado() -> dict:
         "total_origenes": len(origenes),
         "origenes": info,
         "error_rules": catalogo.obtener_error(),
+        "contexto_rag": contexto_rag.estado(),
     }

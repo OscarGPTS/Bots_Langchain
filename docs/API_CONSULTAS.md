@@ -51,7 +51,9 @@ El cliente envía **qué quiere** (`consulta`) y **dónde buscarlo** (`origen`).
    solo lo necesario (menos tokens, menos errores). Se puede **fijar la entidad** con el
    campo `objetivo`.
 2. **Genera la consulta** — un LLM traduce la pregunta a un `SELECT` de MySQL (o elige un
-   endpoint REST `GET` con sus parámetros).
+   endpoint REST `GET` con sus parámetros). Si hay **contexto semántico** indexado
+   (`context/<origen>/*.md`, ver más abajo), se inyectan al prompt los top-k bloques
+   relevantes (vistas del sistema de origen con su SQL equivalente).
 3. **Valida y ejecuta (solo lectura)** — el SQL pasa por un validador (solo `SELECT`,
    allowlist de tablas, `LIMIT` forzado) y se ejecuta con un usuario MySQL de solo
    lectura; el REST solo admite `GET` contra el host configurado.
@@ -59,7 +61,7 @@ El cliente envía **qué quiere** (`consulta`) y **dónde buscarlo** (`origen`).
    objeto de respuesta (incluida la agregación de datos para gráficos).
 
 ```
-consulta + origen ──► [matcher/objetivo] ──► [LLM: NL→SQL/REST] ──► [validación+ejecución RO] ──► objeto {texto|tabla|grafico}
+consulta + origen ──► [matcher/objetivo] ──► [+ contexto RAG (context/<origen>/)] ──► [LLM: NL→SQL/REST] ──► [validación+ejecución RO] ──► objeto {texto|tabla|grafico}
 ```
 
 **Base URL:** `https://bots.tech-energy.lat` (prod) · `http://localhost:8000` (local).
@@ -397,7 +399,29 @@ tablas:
 > cruza `proyectos → historial → ponderaciones` funciona sin declarar cada salto a mano.
 >
 > Ejemplo real completo: origen `cartera_db` en [config/rules.yaml](../config/rules.yaml),
-> derivado de [CONTEXTO_GRAFICAS_DASHBOARD.md](CONTEXTO_GRAFICAS_DASHBOARD.md).
+> derivado de [context/cartera_db/CONTEXTO_GRAFICAS_DASHBOARD.md](../context/cartera_db/CONTEXTO_GRAFICAS_DASHBOARD.md).
+
+### Contexto semántico por origen (`context/<origen>/`)
+
+Complemento RAG de `rules.yaml` para precisión a escala: documentos Markdown que
+describen las **vistas del sistema de origen** (dashboard, tablas, KPIs) en bloques
+autocontenidos con su SQL equivalente. Convención de formato en
+[context/README.md](../context/README.md).
+
+- **Indexar:** `python scripts/indexar_contexto.py` (idempotente; colección ChromaDB
+  propia, separada de los bots de documentos).
+- **Consumo:** en cada consulta SQL, el orquestador recupera los top-k chunks del
+  origen (`CONSULTAS_RAG_TOP_K`, default 3) y los inyecta al prompt como sección
+  «Vistas del sistema».
+- **Degradación:** si ChromaDB no responde o la colección está vacía, la consulta
+  sigue solo con `rules.yaml` (sin error). Apagable con `CONSULTAS_RAG_ENABLED=false`.
+- **Diagnóstico:** `GET /api/v1/consultas/health` expone `contexto_rag`
+  (colección, nº de vectores, top-k).
+
+> **Regla práctica:** las fórmulas/reglas duras (allowlist, bandas, estados) viven en
+> `rules.yaml`; el detalle por vista (columnas, filtros, «responde preguntas como»)
+> vive en `context/`. Lo primero se inyecta siempre; lo segundo solo cuando es
+> relevante a la pregunta.
 
 ### Cómo agregar un nuevo origen (paso a paso)
 
@@ -407,6 +431,9 @@ tablas:
 3. **Mapea las tablas/recursos** que quieras exponer, con sus `keys`, `columnas` y, si
    aplica, `relaciones` (FKs).
 4. Reinicia la API y verifica en `GET /api/v1/consultas/health` que el origen aparece.
+5. *(Opcional, recomendado)* Agrega el contexto semántico de sus vistas en
+   `context/<clave_origen>/*.md` (convención en [context/README.md](../context/README.md))
+   y ejecuta `python scripts/indexar_contexto.py`.
 
 > **Menos es más:** expón solo las tablas/columnas necesarias. Reduce tokens, mejora la
 > precisión y limita la superficie de datos accesible.

@@ -107,6 +107,13 @@ class Settings(BaseSettings):
     CONSULTAS_SQL_TIMEOUT: int = 8       # segundos máx. de ejecución por consulta SQL
     CONSULTAS_REST_TIMEOUT: int = 10     # timeout para orígenes REST
 
+    # Contexto semántico (RAG) de consultas: documentos en context/<origen>/*.md
+    # indexados con scripts/indexar_contexto.py. Si la colección está vacía o
+    # ChromaDB no responde, las consultas degradan a solo rules.yaml.
+    CONSULTAS_RAG_ENABLED: bool = True
+    CONSULTAS_RAG_TOP_K: int = 3         # chunks inyectados al prompt NL->SQL
+    CONTEXT_PATH: str = "context"        # carpeta base del contexto por origen
+
     # ===== Seguridad / operación =====
     # Token requerido para operaciones administrativas (p.ej. /reindexar).
     # Si está vacío, esos endpoints quedan deshabilitados (403).

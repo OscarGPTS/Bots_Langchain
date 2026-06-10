@@ -19,7 +19,7 @@ La documentación detallada vive en [`docs/`](docs/):
 |-----------|-----------|
 | [docs/API_CONSULTAS.md](docs/API_CONSULTAS.md) | **Guía del servicio de Consultas a Datos** (NL → SQL / API REST). Pensada para compartir con el equipo: endpoints, esquema de respuesta, ejemplos, voz, cómo configurar orígenes y seguridad. |
 | [docs/MAPEO_KEYS_CARTERA.md](docs/MAPEO_KEYS_CARTERA.md) | Mapeo de keys → tablas y alias del origen `cartera_db` (entidades, columnas y relaciones). Para compartir con quien integra ese sistema. |
-| [docs/CONTEXTO_GRAFICAS_DASHBOARD.md](docs/CONTEXTO_GRAFICAS_DASHBOARD.md) | Catálogo de vistas/gráficas del sistema Cartera de Clientes con su SQL equivalente. **Fuente** del `contexto`/`ejemplos` del origen `cartera_db`. |
+| [context/cartera_db/CONTEXTO_GRAFICAS_DASHBOARD.md](context/cartera_db/CONTEXTO_GRAFICAS_DASHBOARD.md) | Catálogo de vistas/gráficas del sistema Cartera de Clientes con su SQL equivalente. **Fuente** del `contexto`/`ejemplos` del origen `cartera_db` y del contexto RAG de consultas (convención en [context/README.md](context/README.md)). |
 | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Arquitectura del sistema, mapa de módulos y **cómo se integró la voz**. |
 | [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) | Referencia completa de la API (todos los bots + voz + consultas). |
 | [docs/INTEGRACION_VOZ_CLIENTE.md](docs/INTEGRACION_VOZ_CLIENTE.md) | Cómo consumir el servicio de voz desde una app cliente. |

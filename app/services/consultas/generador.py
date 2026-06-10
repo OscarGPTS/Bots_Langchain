@@ -84,11 +84,14 @@ def generar_sql(
     max_filas: int,
     join_hints: Optional[List[str]] = None,
     contexto_origen: Optional[str] = None,
+    contexto_vistas: Optional[str] = None,
 ) -> Dict:
     """NL -> {sql, titulo, tipo}. El SELECT se valida después con seguridad_sql.
 
     `contexto_origen` son reglas de negocio del origen; las tablas pueden traer además
     `contexto` (notas) y `ejemplos` (few-shot pregunta→SQL) que guían la generación.
+    `contexto_vistas` son chunks recuperados del contexto semántico (context/<origen>/)
+    que describen las vistas del sistema de origen con su SQL equivalente.
     """
     esquema = _esquema_tablas(candidatos)
     nombres = [t["nombre"] for t in candidatos]
@@ -127,6 +130,12 @@ def generar_sql(
     notas = _notas_tablas(candidatos)
     if notas:
         secciones.append(f"Notas de tablas:\n{notas}")
+    if contexto_vistas and contexto_vistas.strip():
+        secciones.append(
+            "Vistas del sistema de origen (si la pregunta corresponde a una de estas "
+            "vistas, replica su SQL equivalente y sus fórmulas):\n"
+            + contexto_vistas.strip()
+        )
     ejemplos = _ejemplos(candidatos)
     if ejemplos:
         secciones.append(f"Ejemplos de referencia (replica estilo y fórmulas):\n{ejemplos}")

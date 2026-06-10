@@ -46,7 +46,7 @@ ni `/` final). En la respuesta, `origen` siempre vuelve como la clave canónica 
 
 > **Contexto de negocio** (fórmulas de ponderado/bandas, "adjudicado", catálogos con
 > `status=1`, etc.) y **ejemplos** que reproducen las vistas del dashboard están cargados
-> en el origen. Detalle/fuente: [CONTEXTO_GRAFICAS_DASHBOARD.md](CONTEXTO_GRAFICAS_DASHBOARD.md).
+> en el origen. Detalle/fuente: [context/cartera_db/CONTEXTO_GRAFICAS_DASHBOARD.md](../context/cartera_db/CONTEXTO_GRAFICAS_DASHBOARD.md).
 
 ---
 
