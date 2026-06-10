@@ -376,12 +376,13 @@ class BotDocumentosAvanzado:
     ) -> Tuple[str, Optional[Dict]]:
         """
         Modo Consulta Rápida - Respuestas directas
-        Usa GPT-4o-mini (OpenAI) o Ollama con solo 3 chunks
-        
+        Usa el LLM de chat configurado (LLM_PROVIDER: opencode/deepseek por
+        defecto, ollama u openai) con solo 3 chunks.
+
         Args:
             pregunta: Pregunta del usuario
             filtros: Filtros opcionales de metadata
-        
+
         Returns:
             (respuesta, estadísticas)
         """
@@ -414,27 +415,30 @@ Pregunta: {pregunta}
 
 Respuesta directa:"""
         
-        # Invocar modelo con monitoreo de costos
-        if LOCALIA:
+        # Invocar modelo con monitoreo de costos. La rama depende del PROVEEDOR
+        # del chat (no de LOCALIA, que gobierna embeddings): el callback de
+        # OpenAI aplica a openai y opencode (gateway compatible); con modelos no
+        # OpenAI (p.ej. deepseek) reporta tokens correctos y costo 0.
+        if LLM_PROVIDER == "ollama":
             # Ollama (sin callback de costos)
             try:
                 response = self.llm_rapido.invoke([HumanMessage(content=prompt)])
                 respuesta = response.content
-                
+
                 # Incluir información de documentos fuente
                 respuesta += "\n\n" + "─"*60
                 respuesta += "\n📚 Documentos consultados:\n"
                 for doc in chunks:
                     respuesta += f"\n📄 {doc.metadata.get('title')}"
                     respuesta += f" (Creado: {doc.metadata.get('created', 'N/A')[:10]})"
-                
+
                 return respuesta, None
-            
+
             except Exception as e:
                 return f"❌ Error al procesar consulta: {e}", None
-        
+
         else:
-            # OpenAI con monitoreo de costos
+            # OpenAI / OpenCode con monitoreo de tokens
             try:
                 with get_openai_callback() as cb:
                     response = self.llm_rapido.invoke([HumanMessage(content=prompt)])
@@ -536,27 +540,27 @@ Proporciona un análisis estructurado que incluya:
 
 Análisis:"""
         
-        # Invocar modelo con monitoreo
-        if LOCALIA:
-            # Ollama
+        # Invocar modelo con monitoreo (rama por PROVEEDOR del chat, ver consulta_rapida)
+        if LLM_PROVIDER == "ollama":
+            # Ollama (sin callback de costos)
             try:
                 response = self.llm_razonamiento.invoke([HumanMessage(content=prompt)])
                 respuesta = response.content
-                
+
                 # Incluir información de documentos fuente
                 respuesta += "\n\n" + "─"*60
                 respuesta += "\n📚 Documentos analizados:\n"
                 for doc_id, data in docs_unicos.items():
                     respuesta += f"\n📄 {data['title']}"
                     respuesta += f" ({len(data['chunks'])} fragmentos)"
-                
+
                 return respuesta, None
-            
+
             except Exception as e:
                 return f"❌ Error al procesar análisis: {e}", None
-        
+
         else:
-            # OpenAI con reasoning y monitoreo
+            # OpenAI / OpenCode con monitoreo de tokens
             try:
                 with get_openai_callback() as cb:
                     response = self.llm_razonamiento.invoke([HumanMessage(content=prompt)])

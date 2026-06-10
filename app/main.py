@@ -114,6 +114,8 @@ async def root():
             "voz": "/api/v1/voz",
             "consultas": "/api/v1/consultas",
         },
+        # Proveedor/modelo de IA efectivos por módulo (visibilidad operativa).
+        "ia": settings.resumen_ia(),
     }
 
 
@@ -125,6 +127,7 @@ async def health_check():
         "timestamp": time.time(),
         "service": settings.APP_NAME,
         "version": "1.0.0",
+        "ia": settings.resumen_ia(),
     }
 
 

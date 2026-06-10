@@ -43,6 +43,15 @@ CAMPOS_EDITABLES: List[Dict[str, Any]] = [
      "min": 1, "max": 120, "descripcion": "Segundos máx. de ejecución por consulta SQL."},
     {"clave": "CONSULTAS_REST_TIMEOUT", "etiqueta": "Timeout REST (s)", "tipo": "int", "hot": True,
      "min": 1, "max": 120, "descripcion": "Timeout para orígenes REST."},
+    {"clave": "CONSULTAS_LLM_PROVIDER", "etiqueta": "Proveedor LLM de consultas", "tipo": "enum", "hot": True,
+     "opciones": ["auto", "ollama", "openai", "opencode"],
+     "descripcion": "Proveedor SOLO para el generador NL→SQL; 'auto' hereda LLM_PROVIDER."},
+    {"clave": "CONSULTAS_LLM_MODEL", "etiqueta": "Modelo LLM de consultas", "tipo": "str", "hot": True,
+     "descripcion": "Modelo del proveedor elegido para NL→SQL (p.ej. deepseek-v4-flash); 'auto' = default del proveedor."},
+    {"clave": "CONSULTAS_RAG_ENABLED", "etiqueta": "Contexto RAG de consultas", "tipo": "bool", "hot": True,
+     "descripcion": "Inyectar al prompt NL→SQL los chunks de context/<origen>/ (si están indexados)."},
+    {"clave": "CONSULTAS_RAG_TOP_K", "etiqueta": "Top-k contexto RAG", "tipo": "int", "hot": True,
+     "min": 1, "max": 10, "descripcion": "Nº de chunks de contexto inyectados por consulta."},
     {"clave": "OLLAMA_MODEL", "etiqueta": "Modelo Ollama", "tipo": "str", "hot": False,
      "descripcion": "Modelo de Ollama para los bots RAG (requiere reinicio)."},
     {"clave": "OPENAI_MODEL_RAPIDO", "etiqueta": "Modelo OpenAI (rápido)", "tipo": "str", "hot": False,
@@ -124,7 +133,7 @@ def _escribir_env(cambios: Dict[str, Any]) -> None:
 def _aplicar_hot(clave: str, valor: Any) -> None:
     """Aplicar el cambio en memoria (mutando settings) y limpiar cachés dependientes."""
     setattr(settings, clave, valor)
-    if clave == "LLM_PROVIDER":
+    if clave in ("LLM_PROVIDER", "CONSULTAS_LLM_PROVIDER", "CONSULTAS_LLM_MODEL"):
         from app.services.consultas.llm import obtener_llm
         obtener_llm.cache_clear()
     if clave == "CONSULTAS_SQL_TIMEOUT":

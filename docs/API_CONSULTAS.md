@@ -501,6 +501,16 @@ CONSULTAS_REST_TIMEOUT=10        # seg. timeout REST
 # Proveedor del LLM (recomendado uno bueno con JSON estructurado)
 LLM_PROVIDER=opencode            # ollama | openai | opencode
 
+# LLM a medida SOLO para el generador NL->SQL (no afecta a los bots RAG).
+# auto = hereda LLM_PROVIDER; el modelo sobreescribe el default del proveedor.
+CONSULTAS_LLM_PROVIDER=auto      # auto | ollama | openai | opencode
+# CONSULTAS_LLM_MODEL=deepseek-v4-flash
+
+# Contexto semántico (RAG) — ver sección "Contexto semántico por origen"
+CONSULTAS_RAG_ENABLED=true
+CONSULTAS_RAG_TOP_K=3
+# OLLAMA_EMBED_MODEL=nomic-embed-text   # embeddings dedicados (requiere ollama pull)
+
 # DSN(s) de orígenes SQL — SIEMPRE usuario de SOLO LECTURA
 CARTERA_DB_URL=mysql+pymysql://cartera_ro:PASSWORD@127.0.0.1:3306/cartera_clientes
 

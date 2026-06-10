@@ -53,14 +53,25 @@ class Settings(BaseSettings):
     LOCALIA: bool = True
 
     # ===== Proveedor del LLM de chat (etapa de respuesta del RAG) =====
+    # DEFAULT: opencode (gateway con deepseek). Si faltan credenciales de OpenCode
+    # se degrada automáticamente según LOCALIA (ver chat_llm_provider).
     # "auto" => deriva de LOCALIA (ollama si true, openai si false).
     # "ollama" | "openai" | "opencode".
-    LLM_PROVIDER: str = "auto"
+    LLM_PROVIDER: str = "opencode"
 
-    # OpenCode Go (gateway compatible con la API de OpenAI)
-    OPENCODE_BASE_URL: Optional[str] = None
+    # OpenCode Go (gateway compatible con la API de OpenAI). Proveedor por defecto
+    # del chat; solo la API key es secreta y vive en .env.
+    OPENCODE_BASE_URL: Optional[str] = "https://opencode.ai/zen/go/v1"
     OPENCODE_API_KEY: Optional[str] = None
-    OPENCODE_MODEL: Optional[str] = None
+    OPENCODE_MODEL: Optional[str] = "deepseek-v4-flash"
+
+    # ===== Embeddings (RAG) =====
+    # Modelo de embeddings DEDICADO (recomendado: nomic-embed-text en Ollama).
+    # Si OLLAMA_EMBED_MODEL no se define, se usa OLLAMA_MODEL (compatibilidad con
+    # las colecciones existentes de los bots). Solo lo consume el contexto RAG de
+    # consultas; los bots de documentos conservan su comportamiento actual.
+    OLLAMA_EMBED_MODEL: Optional[str] = None
+    OPENAI_EMBED_MODEL: str = "text-embedding-3-small"
 
     # ===== ChromaDB =====
     CHROMA_DB_PATH: str = "./chroma_db"
@@ -114,6 +125,13 @@ class Settings(BaseSettings):
     CONSULTAS_RAG_TOP_K: int = 3         # chunks inyectados al prompt NL->SQL
     CONTEXT_PATH: str = "context"        # carpeta base del contexto por origen
 
+    # LLM específico del módulo de consultas (NL->SQL). Permite usar un modelo
+    # distinto al de los bots (p.ej. opencode/deepseek para SQL y ollama para chat).
+    # "auto" => hereda LLM_PROVIDER global. CONSULTAS_LLM_MODEL sobreescribe el
+    # modelo del proveedor elegido ("auto"/vacío = default del proveedor).
+    CONSULTAS_LLM_PROVIDER: str = "auto"
+    CONSULTAS_LLM_MODEL: Optional[str] = None
+
     # ===== Seguridad / operación =====
     # Token requerido para operaciones administrativas (p.ej. /reindexar).
     # Si está vacío, esos endpoints quedan deshabilitados (403).
@@ -135,11 +153,66 @@ class Settings(BaseSettings):
 
     @property
     def chat_llm_provider(self) -> str:
-        """Proveedor efectivo del LLM de chat: ollama | openai | opencode."""
+        """Proveedor efectivo del LLM de chat: ollama | openai | opencode.
+
+        Si el proveedor es opencode pero faltan sus credenciales (instalación
+        nueva sin OPENCODE_API_KEY), degrada según LOCALIA para no tumbar los
+        bots al arrancar.
+        """
         provider = (self.LLM_PROVIDER or "auto").lower()
         if provider == "auto":
             return "ollama" if self.LOCALIA else "openai"
+        if provider == "opencode" and not (self.OPENCODE_BASE_URL and self.OPENCODE_API_KEY):
+            return "ollama" if self.LOCALIA else "openai"
         return provider
+
+    @property
+    def consultas_llm_provider(self) -> str:
+        """Proveedor efectivo del LLM de consultas ('auto' hereda el global)."""
+        provider = (self.CONSULTAS_LLM_PROVIDER or "auto").lower()
+        if provider == "auto":
+            return self.chat_llm_provider
+        return provider
+
+    @property
+    def embeddings_model(self) -> str:
+        """Modelo de embeddings efectivo según LOCALIA (con override dedicado)."""
+        if self.LOCALIA:
+            return self.OLLAMA_EMBED_MODEL or self.OLLAMA_MODEL
+        return self.OPENAI_EMBED_MODEL
+
+    def resumen_ia(self) -> dict:
+        """Mapa de proveedor/modelo de IA efectivos por módulo (para `/` y `/health`).
+
+        Refleja la configuración VIGENTE en settings. El bot avanzado congela su
+        proveedor al arrancar: si se cambió en caliente sin reiniciar, lo real es
+        lo del último arranque.
+        """
+
+        def _modelo_chat(proveedor: str, override: Optional[str] = None) -> Optional[str]:
+            if override and override.strip() and override.strip().lower() != "auto":
+                return override.strip()
+            if proveedor == "ollama":
+                return self.OLLAMA_MODEL
+            if proveedor == "opencode":
+                return self.OPENCODE_MODEL
+            return self.OPENAI_MODEL_RAPIDO
+
+        chat = self.chat_llm_provider
+        consultas = self.consultas_llm_provider
+        return {
+            "bot_simple": {"proveedor": "ollama", "modelo": self.OLLAMA_MODEL},
+            "bot_avanzado": {"proveedor": chat, "modelo": _modelo_chat(chat)},
+            "consultas": {
+                "proveedor": consultas,
+                "modelo": _modelo_chat(consultas, self.CONSULTAS_LLM_MODEL),
+            },
+            "embeddings": {
+                "proveedor": "ollama" if self.LOCALIA else "openai",
+                "bots_documentos": self.OLLAMA_MODEL if self.LOCALIA else "text-embedding-3-small",
+                "contexto_consultas": self.embeddings_model,
+            },
+        }
 
 
 @lru_cache

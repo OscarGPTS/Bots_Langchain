@@ -11,6 +11,7 @@ está vacía, `recuperar_contexto` devuelve "" y la consulta sigue funcionando s
 con rules.yaml.
 """
 import os
+import re
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -19,9 +20,6 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Colección separada por proveedor de embeddings (evita conflictos de dimensiones).
-_NOMBRE_COLECCION = "contexto_consultas_ollama" if settings.LOCALIA else "contexto_consultas_openai"
-
 # Chunks por petición de embeddings al indexar (ver indexar_directorio).
 _LOTE_INDEXADO = 8
 
@@ -29,18 +27,30 @@ _vector_store = None          # caché del Chroma inicializado
 _vector_store_error = False   # True si la inicialización ya falló (no reintentar por consulta)
 
 
+def _nombre_coleccion() -> str:
+    """Colección separada por proveedor Y modelo de embeddings.
+
+    Cambiar de modelo (p.ej. OLLAMA_EMBED_MODEL=nomic-embed-text) crea una colección
+    nueva en vez de chocar con las dimensiones de la anterior; basta reindexar con
+    `scripts/indexar_contexto.py`.
+    """
+    proveedor = "ollama" if settings.LOCALIA else "openai"
+    modelo = re.sub(r"[^a-zA-Z0-9_-]", "-", settings.embeddings_model)
+    return f"contexto_consultas_{proveedor}__{modelo}"
+
+
 def _crear_embeddings():
-    """Embeddings según LOCALIA (mismo criterio que los bots RAG)."""
+    """Embeddings según LOCALIA, con modelo dedicado (settings.embeddings_model)."""
     if settings.LOCALIA:
         from langchain_ollama import OllamaEmbeddings
 
-        return OllamaEmbeddings(base_url=settings.OLLAMA_URL, model=settings.OLLAMA_MODEL)
+        return OllamaEmbeddings(base_url=settings.OLLAMA_URL, model=settings.embeddings_model)
 
     from langchain_openai import OpenAIEmbeddings
 
     if not settings.OPENAI_API_KEY:
         raise ValueError("OPENAI_API_KEY no configurada en .env")
-    return OpenAIEmbeddings(openai_api_key=settings.OPENAI_API_KEY, model="text-embedding-3-small")
+    return OpenAIEmbeddings(openai_api_key=settings.OPENAI_API_KEY, model=settings.embeddings_model)
 
 
 def _obtener_vector_store():
@@ -57,7 +67,7 @@ def _obtener_vector_store():
 
         os.makedirs(settings.CHROMA_DB_PATH, exist_ok=True)
         _vector_store = Chroma(
-            collection_name=_NOMBRE_COLECCION,
+            collection_name=_nombre_coleccion(),
             embedding_function=_crear_embeddings(),
             persist_directory=settings.CHROMA_DB_PATH,
         )
@@ -66,6 +76,13 @@ def _obtener_vector_store():
         _vector_store_error = True
         logger.warning("Contexto RAG no disponible (%s); las consultas siguen solo con rules.yaml", e)
         return None
+
+
+def reiniciar_cache() -> None:
+    """Olvidar el Chroma cacheado (p.ej. tras cambiar el modelo de embeddings)."""
+    global _vector_store, _vector_store_error
+    _vector_store = None
+    _vector_store_error = False
 
 
 def recuperar_contexto(consulta: str, origen_clave: str, k: Optional[int] = None) -> str:
@@ -161,7 +178,8 @@ def estado() -> Dict:
             pass
     return {
         "rag_enabled": settings.CONSULTAS_RAG_ENABLED,
-        "coleccion": _NOMBRE_COLECCION,
+        "coleccion": _nombre_coleccion(),
+        "modelo_embeddings": settings.embeddings_model,
         "disponible": store is not None,
         "vectores": vectores,
         "context_path": settings.CONTEXT_PATH,

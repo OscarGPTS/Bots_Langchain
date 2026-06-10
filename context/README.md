@@ -7,21 +7,45 @@ inyecta los chunks relevantes al prompt NL→SQL como sección «Vistas del sist
 
 ```
 context/
+├── PLANTILLA_CONTEXTO.md              # plantilla para proyectos nuevos (NO se indexa)
 └── cartera_db/                        # = clave del origen en rules.yaml
     └── CONTEXTO_GRAFICAS_DASHBOARD.md # catálogo de vistas del sistema Laravel
 ```
+
+> Solo se indexan los `.md` dentro de subcarpetas (`context/*/*.md`); los archivos
+> en la raíz (plantilla, este README) quedan fuera.
 
 ## Flujo
 
 1. **Fuente de verdad:** el documento se edita en el repo del proyecto que
    documenta (p. ej. `GPT_Catera_Clientes2/docs/`) y se sincroniza aquí como
-   copia de ingestión.
-2. **Indexar:** `python scripts/indexar_contexto.py` (idempotente: reemplaza
-   los chunks del archivo en la colección).
+   copia de ingestión. Registrar cada documento en `FUENTES` de
+   `scripts/sincronizar_contexto.py`.
+2. **Sincronizar + indexar:** `python scripts/sincronizar_contexto.py` (copia
+   las fuentes con cambios y reindexa) o `python scripts/indexar_contexto.py`
+   si se editó la copia directamente. Ambos son idempotentes.
 3. **Consumo:** `app/services/consultas/contexto_rag.py` recupera top-k chunks
    filtrados por origen y los inyecta en `generador.generar_sql()`. Si ChromaDB
    no está disponible o la colección está vacía, las consultas degradan a solo
    `rules.yaml` sin fallar.
+
+## Proyecto nuevo en 4 pasos
+
+1. Declarar el origen en `config/rules.yaml` (allowlist + `contexto` + `ejemplos`).
+2. Copiar [PLANTILLA_CONTEXTO.md](PLANTILLA_CONTEXTO.md) a
+   `context/<clave_origen>/CONTEXTO_<SISTEMA>.md` y llenar los `{placeholders}`.
+3. Registrar la fuente en `scripts/sincronizar_contexto.py` (si se edita en otro repo).
+4. `python scripts/indexar_contexto.py` y validar con
+   `GET /api/v1/consultas/health` (campo `contexto_rag`).
+
+## Embeddings
+
+El retrieval usa el modelo de `settings.embeddings_model`
+(`OLLAMA_EMBED_MODEL` si está definido, si no `OLLAMA_MODEL`; con `LOCALIA=false`,
+`OPENAI_EMBED_MODEL`). La colección lleva el modelo en el nombre
+(`contexto_consultas_<proveedor>__<modelo>`), así que **cambiar de modelo solo
+requiere reindexar** — nunca colisiona dimensiones. Recomendado: un modelo de
+embeddings real (`ollama pull nomic-embed-text`) en lugar del modelo de chat.
 
 ## Convención de formato (optimizada para chunking)
 
