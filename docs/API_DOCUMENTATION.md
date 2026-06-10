@@ -28,6 +28,32 @@ Todas las respuestas son en formato **JSON** con estructura estandarizada.
 - **ReDoc**: `https://bots.tech-energy.lat/redoc`
 - **OpenAPI JSON**: `https://bots.tech-energy.lat/openapi.json`
 
+### Información de la API y proveedor de IA (`GET /` y `GET /health`)
+
+La raíz devuelve el estado, los enlaces a docs/endpoints y el bloque **`ia`** con el
+proveedor/modelo de IA **efectivo por módulo** (visibilidad operativa de qué está
+tomando cada bot):
+
+```json
+{
+  "nombre": "EVIA",
+  "estado": "activo",
+  "documentacion": "/docs",
+  "endpoints": { "bot_simple": "/api/v1/bot-simple", "bot_avanzado": "/api/v1/bot-avanzado", "voz": "/api/v1/voz", "consultas": "/api/v1/consultas" },
+  "ia": {
+    "bot_simple":   { "proveedor": "ollama",   "modelo": "phi4-mini:latest" },
+    "bot_avanzado": { "proveedor": "opencode", "modelo": "deepseek-v4-flash" },
+    "consultas":    { "proveedor": "opencode", "modelo": "deepseek-v4-flash" },
+    "embeddings":   { "proveedor": "ollama", "bots_documentos": "phi4-mini:latest", "contexto_consultas": "phi4-mini:latest" }
+  }
+}
+```
+
+`GET /health` devuelve `status`, `timestamp`, `service`, `version` y el mismo bloque `ia`.
+
+> El default del sistema es **OpenCode con `deepseek-v4-flash`** (`LLM_PROVIDER=opencode`).
+> Si faltan credenciales de OpenCode, degrada automáticamente según `LOCALIA`.
+
 ---
 
 ## 🤖 Bot Simple
@@ -339,7 +365,9 @@ curl -X POST "https://bots.tech-energy.lat/api/v1/bot-avanzado/consulta-rapida" 
 
 **Campos de Response:**
 - `respuesta` (string): Respuesta generada
-- `estadisticas` (object, optional): Estadísticas de uso
+- `estadisticas` (object, optional): Estadísticas de uso. Se reportan con proveedores
+  `openai` y `opencode` (con OpenCode/deepseek `costo_usd` sale 0: el callback no conoce
+  sus precios, los tokens sí son reales); con `ollama` el campo es `null`.
   - `tokens_entrada` (integer): Tokens de entrada
   - `tokens_salida` (integer): Tokens de salida
   - `costo_usd` (float): Costo en USD (si aplica)
@@ -473,9 +501,9 @@ curl -X GET "https://bots.tech-energy.lat/api/v1/bot-avanzado/stats"
 {
   "total_documentos": 4,
   "total_vectores": 116,
-  "modo": "cloud (OpenAI)",
-  "modelo_rapido": "gpt-4o-mini",
-  "modelo_razonamiento": "gpt-4o",
+  "modo": "cloud (OpenCode)",
+  "modelo_rapido": "deepseek-v4-flash",
+  "modelo_razonamiento": "deepseek-v4-flash",
   "documentos_indexados": []
 }
 ```
@@ -483,7 +511,7 @@ curl -X GET "https://bots.tech-energy.lat/api/v1/bot-avanzado/stats"
 **Campos de Response:**
 - `total_documentos` (integer): Total de documentos indexados
 - `total_vectores` (integer): Total de vectores en ChromaDB
-- `modo` (string): Modo actual (`local (Ollama)` o `cloud (OpenAI)`)
+- `modo` (string): Proveedor del chat (`cloud (OpenCode)` —default—, `local (Ollama)` o `cloud (OpenAI)`)
 - `modelo_rapido` (string): Modelo configurado para consultas rápidas
 - `modelo_razonamiento` (string): Modelo configurado para razonamiento profundo
 - `documentos_indexados` (array): Lista de documentos indexados

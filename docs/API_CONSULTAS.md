@@ -20,6 +20,7 @@ configurar nuevos orígenes sin leer el resto del proyecto.
 6. [Pintar tabla y gráfico (frontend)](#-pintar-tabla-y-gráfico-frontend)
 7. [Consulta por voz](#-consulta-por-voz)
 8. [Configurar orígenes (rules.yaml)](#-configurar-orígenes-rulesyaml)
+   - [Contexto semántico por origen (context/)](#contexto-semántico-por-origen-contextorigen)
 9. [Seguridad (solo lectura)](#-seguridad-solo-lectura)
 10. [Códigos de error](#-códigos-de-error)
 11. [Puesta en marcha (.env)](#-puesta-en-marcha-env)

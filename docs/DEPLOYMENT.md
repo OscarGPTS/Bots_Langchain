@@ -116,6 +116,10 @@ sudo systemctl restart bots
 # Ejecutar tras el primer despliegue y cuando haya documentos nuevos en Paperless:
 sudo -u tech-energy /home/www/Bots_Langchain/.venv/bin/python scripts/indexar_docs.py
 # (o llamar al endpoint protegido: POST /api/v1/bot-avanzado/reindexar con X-Admin-Token)
+
+# Indexar el contexto semántico del módulo de consultas (context/<origen>/*.md).
+# Ejecutar tras el primer despliegue y cada vez que cambien esos documentos:
+sudo -u tech-energy /home/www/Bots_Langchain/.venv/bin/python scripts/indexar_contexto.py
 ```
 
 > **Indexación:** desde la reestructuración, la indexación es una operación

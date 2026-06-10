@@ -24,8 +24,11 @@ la voz, para que el sistema sea entendible y escalable.
                  │                 │                 │           │
                  └──────── ChromaDB / Paperless ─────┘     MySQL RO / APIs REST
                                    │
-                          LLM (LLM_PROVIDER): ollama | openai | opencode
+                          LLM (LLM_PROVIDER): opencode (DEFAULT, deepseek) | ollama | openai
 ```
+
+> El proveedor/modelo efectivo de cada módulo es visible en `GET /` y `GET /health`
+> (bloque `ia`). Si faltan credenciales de OpenCode, el sistema degrada según `LOCALIA`.
 
 Capas (patrón consistente en todo el repo):
 
@@ -54,7 +57,9 @@ configuración (variables de entorno).
 
 - **API:** FastAPI + Uvicorn/Gunicorn.
 - **RAG:** LangChain + ChromaDB (embeddings locales con Ollama o OpenAI según `LOCALIA`).
-- **LLM de chat/generación:** conmutable con `LLM_PROVIDER` (`ollama` | `openai` | `opencode`).
+- **LLM de chat/generación:** conmutable con `LLM_PROVIDER` (`opencode` —default, deepseek— |
+  `ollama` | `openai`). El módulo de consultas puede sobreescribirlo con
+  `CONSULTAS_LLM_PROVIDER`/`CONSULTAS_LLM_MODEL`.
 - **Datos (consultas):** SQLAlchemy + PyMySQL (MySQL/MariaDB), `sqlglot` (validación SQL),
   `requests` (REST), `PyYAML` (catálogo de reglas).
 - **Voz:** faster-whisper (STT) + Piper (TTS) en local, u OpenAI como alternativa.
@@ -96,8 +101,9 @@ Ubicación: `app/services/consultas/`. Cada archivo tiene una responsabilidad ú
 | Archivo | Responsabilidad |
 |---------|-----------------|
 | `catalogo.py` | Carga `rules.yaml`; matcher por `keys`; búsqueda por nombre (`objetivo`); expansión de relaciones (FK) |
-| `llm.py` | Factory del LLM de chat (reusa `LLM_PROVIDER`) |
-| `generador.py` | NL → SQL (MySQL) / NL → intent REST; decide `texto`/`tabla`/`grafico`; recibe los JOIN |
+| `llm.py` | Factory del LLM de chat (`CONSULTAS_LLM_PROVIDER`/`CONSULTAS_LLM_MODEL`; `auto` hereda `LLM_PROVIDER`) |
+| `contexto_rag.py` | Contexto semántico: indexa `context/<origen>/*.md` en ChromaDB y recupera top-k chunks para el prompt SQL (degrada en silencio) |
+| `generador.py` | NL → SQL (MySQL) / NL → intent REST; decide `texto`/`tabla`/`grafico`; recibe los JOIN y el contexto semántico |
 | `seguridad_sql.py` | Validación de solo lectura (sqlglot): allowlist, `LIMIT`, bloqueo de DML/DDL/peligros |
 | `ejecutor_sql.py` | Ejecuta el `SELECT` (tope de filas, timeout) |
 | `ejecutor_rest.py` | Cliente `GET` con anti-SSRF y aplanado de JSON a filas |
@@ -114,7 +120,8 @@ lectura y timeout (compatible MySQL y MariaDB).
 procesar_consulta(consulta, origen, formato?, usuario?, objetivo?)
   │
   ├─ catalogo: origen válido? → candidatos (objetivo directo o matcher por keys)
-  ├─ SQL:  expandir_relaciones (FK) → generador.generar_sql → seguridad_sql → ejecutor_sql
+  ├─ SQL:  expandir_relaciones (FK) → contexto_rag.recuperar_contexto (top-k de context/<origen>/)
+  │        → generador.generar_sql → seguridad_sql → ejecutor_sql
   ├─ REST: generador.generar_intent_rest → ejecutor_rest
   └─ formateador.construir_respuesta → ConsultaResponse {texto|tabla|grafico, meta}
 ```
@@ -144,9 +151,13 @@ procesar_consulta(consulta, origen, formato?, usuario?, objetivo?)
 Toda la configuración vive en `.env` (leída por `app/core/config.py`). Variables clave por
 área:
 
-- **IA/RAG:** `LOCALIA`, `LLM_PROVIDER`, `OLLAMA_*`, `OPENAI_*`, `OPENCODE_*`, `CHROMA_*`.
+- **IA/RAG:** `LOCALIA`, `LLM_PROVIDER` (default `opencode`/deepseek), `OLLAMA_*`,
+  `OLLAMA_EMBED_MODEL` (embeddings dedicados del contexto de consultas), `OPENAI_*`,
+  `OPENAI_EMBED_MODEL`, `OPENCODE_*`, `CHROMA_*`.
 - **Voz:** `VOICE_ENABLED`, `VOICE_BACKEND`, `STT_PROVIDER`, `TTS_PROVIDER`, `WHISPER_*`, `PIPER_*`.
 - **Consultas:** `CONSULTAS_ENABLED`, `RULES_PATH`, `CONSULTAS_MAX_FILAS`,
-  `CONSULTAS_SQL_TIMEOUT`, `CONSULTAS_REST_TIMEOUT`, y los DSN de cada origen (read-only).
+  `CONSULTAS_SQL_TIMEOUT`, `CONSULTAS_REST_TIMEOUT`, `CONSULTAS_LLM_PROVIDER`,
+  `CONSULTAS_LLM_MODEL`, `CONSULTAS_RAG_ENABLED`, `CONSULTAS_RAG_TOP_K`, `CONTEXT_PATH`,
+  y los DSN de cada origen (read-only).
 
 Ver `.env.example` para la lista completa y comentada.

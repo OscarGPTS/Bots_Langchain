@@ -185,7 +185,9 @@ gestionan aquí: se cambian por bash editando el `.env`.
 - Escribe los cambios en el `.env` (preservando comentarios y el resto de variables).
 - Aplica **en caliente** los parámetros marcados *"en caliente"* (no hace falta reiniciar):
   `CONSULTAS_ENABLED`, `VOICE_ENABLED`, `VOICE_BACKEND`, `LLM_PROVIDER` (módulo de
-  consultas), `CONSULTAS_MAX_FILAS`, `CONSULTAS_SQL_TIMEOUT`, `CONSULTAS_REST_TIMEOUT`.
+  consultas), `CONSULTAS_MAX_FILAS`, `CONSULTAS_SQL_TIMEOUT`, `CONSULTAS_REST_TIMEOUT`,
+  `CONSULTAS_LLM_PROVIDER`, `CONSULTAS_LLM_MODEL` (LLM a medida del generador NL→SQL),
+  `CONSULTAS_RAG_ENABLED` y `CONSULTAS_RAG_TOP_K` (contexto semántico).
 - Para los marcados *"requiere reinicio"* (modelos de los bots RAG: `OLLAMA_MODEL`,
   `OPENAI_MODEL_*`), guarda el valor y muestra el comando exacto:
   ```bash
@@ -236,10 +238,17 @@ configuras `ExecReload`, usa `sudo systemctl restart bots` (breve corte). Resume
 
 ### Módulo de Consultas a Datos
 - Requiere en `.env`: `CONSULTAS_ENABLED=true`, los DSN de cada origen (usuario MySQL de
-  **solo lectura**) y un `LLM_PROVIDER` capaz (p.ej. `opencode`/`openai`).
+  **solo lectura**) y un LLM capaz. El default del sistema ya es `opencode`/deepseek
+  (solo falta `OPENCODE_API_KEY`); se puede fijar otro solo para consultas con
+  `CONSULTAS_LLM_PROVIDER`/`CONSULTAS_LLM_MODEL`.
 - El catálogo `config/rules.yaml` **no se versiona** (está en `.gitignore`): vive en el
   servidor. Si lo editas, `sudo systemctl restart bots`.
-- Tras cambios, valida: `curl -s http://127.0.0.1:8001/api/v1/consultas/health`.
+- **Contexto semántico (RAG)**: tras editar los `.md` de `context/<origen>/`, ejecutar
+  `python scripts/indexar_contexto.py` (o `sincronizar_contexto.py`, que copia desde los
+  repos fuente y reindexa). No requiere reiniciar el servicio.
+- Tras cambios, valida: `curl -s http://127.0.0.1:8001/api/v1/consultas/health`
+  (incluye el bloque `contexto_rag` con colección y nº de vectores). El proveedor de IA
+  efectivo por módulo es visible en `GET /` (bloque `ia`).
 - Crear/renovar el usuario read-only: `scripts/crear_usuario_readonly_mysql.sql`.
 
 ### Voz (STT/TTS)

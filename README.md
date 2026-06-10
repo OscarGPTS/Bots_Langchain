@@ -98,24 +98,25 @@ python scripts/iniciar_api.py
 
 ### 🤖 Bots Inteligentes
 
-**Bot Simple** (`/api/v1/bot-simple`) — `bots/bot_documentos.py`
+**Bot Simple** (`/api/v1/bot-simple`) — `app/services/rag_simple.py`
 - 🗄️ ChromaDB local + Ollama (phi4-mini:latest)
 - ⚡ Búsqueda vectorial sin costos de API
 - 🔍 5 endpoints: query, analyze-document, documents, recent-documents, health
 
-**Bot Avanzado** (`/api/v1/bot-avanzado`) — `bots/bot_documentos_avanzado.py`
-- ☁️ ChromaDB + OpenAI (gpt-4o / gpt-4o-mini) o Ollama (configurable con `LOCALIA`)
+**Bot Avanzado** (`/api/v1/bot-avanzado`) — `app/services/rag_avanzado.py`
+- ☁️ ChromaDB + LLM conmutable con `LLM_PROVIDER` — **default: OpenCode (deepseek-v4-flash)**;
+  alternativas: `ollama` | `openai`. Los embeddings siguen siendo locales (`LOCALIA`).
 - 🧠 Modo rápido: 3 chunks, respuestas directas
 - 🤔 Modo razonamiento: hasta 20 chunks, análisis profundo con reasoning
 - 🔎 Búsqueda semántica pura (similitud coseno, sin LLM)
-- 💰 Monitor de costos y tokens (solo OpenAI)
+- 💰 Monitor de tokens (OpenAI y OpenCode; con Ollama no hay estadísticas)
 - 📈 8 endpoints completos
 
-**Bot RH** — `bots/bot_rh.py` *(uso interno / scripts)*
+**Bot RH** — `app/services/rh.py` *(uso interno / scripts)*
 - 👥 Consultas especializadas a la API de Recursos Humanos
 - 🤖 Ollama para respuestas en lenguaje natural sobre empleados
 
-**Bot General** — `bots/bot_general.py` *(uso interno / scripts)*
+**Bot General** — `app/services/general.py` *(uso interno / scripts)*
 - 🔗 Combina datos de RH + documentos de Paperless en una sola consulta
 - 🤖 Ollama para respuestas integradas entre ambas fuentes
 
@@ -128,8 +129,10 @@ python scripts/iniciar_api.py
 
 ### 🛠️ Stack Tecnológico
 - **API**: FastAPI + Uvicorn + Gunicorn (producción)
-- **IA Local**: Ollama (phi4-mini:latest) - 0 costos
-- **IA Cloud**: OpenAI (gpt-5-nano)
+- **IA por defecto (chat)**: OpenCode Go — gateway compatible con OpenAI — con `deepseek-v4-flash`
+- **IA Local**: Ollama (phi4-mini:latest) — embeddings y bot simple, 0 costos
+- **IA Cloud alternativa**: OpenAI (gpt-5-nano)
+- **Visibilidad**: `GET /` y `GET /health` exponen el bloque `ia` con el proveedor/modelo efectivo por módulo
 - **Vectorización**: ChromaDB persistente
 - **Validación**: Pydantic 2.12.5
 - **Documentos**: Paperless-ngx con OCR
@@ -229,10 +232,10 @@ pip install -r requirements.txt
 
 ```bash
 # Probar imports
-python3 scripts/test_api_imports.py
+python3 tests/integration/test_api_imports.py
 
 # Verificar conexión con Paperless
-python3 scripts/probar_paperless.py
+python3 tests/integration/probar_paperless.py
 ```
 
 ### Instalación en Windows
@@ -253,7 +256,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # 5. Verificar instalación
-python scripts/test_api_imports.py
+python tests/integration/test_api_imports.py
 ```
 
 ### Solución de Problemas Comunes
@@ -306,13 +309,20 @@ PAPERLESS_TOKEN=tu_token_aqui
 OLLAMA_URL=https://ollama.tudominio.com
 OLLAMA_MODEL=phi4-mini:latest
 
-# ===== OpenAI (Cloud - Opcional) =====
-LOCALIA=false              # true = usar Ollama (local, sin costo), false = usar OpenAI (cloud)
-OPENAI_API_KEY=sk-...      # Solo necesario si LOCALIA=false
+# ===== Embeddings / colección ChromaDB =====
+LOCALIA=true               # true = embeddings con Ollama (local); false = OpenAI
 
-# ===== Modelos OpenAI (Bot Avanzado) =====
-OPENAI_MODEL_RAPIDO=gpt-4o-mini          # Modelo para /consulta-rapida (rápido y económico)
-OPENAI_MODEL_RAZONAMIENTO=gpt-4o         # Modelo para /razonamiento-profundo (más potente)
+# ===== Proveedor del LLM de chat (bot avanzado, consultas) =====
+# Default del sistema: opencode (deepseek-v4-flash). Si falta la API key,
+# degrada automáticamente según LOCALIA. Alternativas: auto | ollama | openai
+LLM_PROVIDER=opencode
+OPENCODE_API_KEY=sk-...                  # única credencial necesaria para el default
+# OPENCODE_BASE_URL y OPENCODE_MODEL ya tienen defaults en el código
+
+# ===== OpenAI (solo si LLM_PROVIDER=openai o LOCALIA=false) =====
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL_RAPIDO=gpt-4o-mini          # /consulta-rapida con proveedor openai
+OPENAI_MODEL_RAZONAMIENTO=gpt-4o         # /razonamiento-profundo con proveedor openai
 
 # ===== ChromaDB =====
 CHROMA_DB_PATH=./chroma_db  # Ruta donde se persisten los vectores
@@ -323,7 +333,11 @@ CHUNK_OVERLAP=150           # Superposición entre chunks (para no perder contex
 API_RH_URL=https://rh.tudominio.com      # URL de la API de Recursos Humanos
 ```
 
-> **Nota sobre `LOCALIA`:** Cuando `LOCALIA=true` (Ollama), los modelos `OPENAI_MODEL_*` se ignoran y se usa `OLLAMA_MODEL` en su lugar. El flag afecta a ambos bots (simple y avanzado).
+> **Nota sobre `LOCALIA` vs `LLM_PROVIDER`:** son cosas distintas. `LOCALIA` gobierna los
+> **embeddings** y la colección de ChromaDB (true = Ollama local). `LLM_PROVIDER` gobierna el
+> **LLM de chat** del bot avanzado y del módulo de consultas (default `opencode`/deepseek).
+> La combinación recomendada es `LOCALIA=true` + `LLM_PROVIDER=opencode`. El bot simple
+> siempre usa Ollama para el chat.
 
 ### Obtener Token de Paperless
 
@@ -335,10 +349,10 @@ python scripts/generar_token_paperless.py
 
 ```bash
 # Probar Paperless
-python scripts/probar_paperless.py
+python tests/integration/probar_paperless.py
 
 # Ver modelos Ollama
-python utils/verificar_ollama.py
+python scripts/verificar_ollama.py
 ```
 
 ---
@@ -358,23 +372,39 @@ langchain/
 │   │   ├── router.py                  #    Agregador de routers v1
 │   │   └── endpoints/
 │   │       ├── bot_simple.py          #    Endpoints bot simple
-│   │       └── bot_avanzado.py        #    Endpoints bot avanzado
+│   │       ├── bot_avanzado.py        #    Endpoints bot avanzado
+│   │       ├── consultas.py           #    Endpoints de consultas a datos
+│   │       ├── voz.py                 #    Endpoints de voz (STT/TTS)
+│   │       └── admin.py               #    Configuración en caliente (X-Admin-Token)
 │   ├── schemas/                       #    Modelos Pydantic (requests/responses)
 │   ├── services/                      # 🤖 Lógica de negocio (RAG)
 │   │   ├── rag_simple.py              #    Bot Simple (ChromaDB + Ollama)
-│   │   ├── rag_avanzado.py            #    Bot Avanzado (ChromaDB + OpenAI/Ollama)
+│   │   ├── rag_avanzado.py            #    Bot Avanzado (ChromaDB + LLM_PROVIDER)
+│   │   ├── voz.py                     #    Voz sobre el RAG
+│   │   ├── consultas/                 #    Módulo de consultas (NL→SQL/REST)
+│   │   │   └── contexto_rag.py        #    Contexto semántico (context/) → prompt SQL
 │   │   ├── rh.py                      #    Bot RH (uso interno / herramienta)
 │   │   └── general.py                 #    Bot General (uso interno / herramienta)
 │   └── clients/                       #    Integraciones externas
-│       └── paperless.py               #    Cliente Paperless (URLs de documentos)
+│       ├── paperless.py               #    Cliente Paperless (URLs de documentos)
+│       ├── mysql.py                   #    Engines SQLAlchemy read-only (consultas)
+│       └── stt.py / tts.py            #    Voz: transcripción y síntesis
 ├── api/                               # 🔁 Shim de compatibilidad
 │   └── main.py                        #    Re-exporta app.main:app (gunicorn legacy)
+├── config/
+│   └── rules.yaml                     # 🗃️ Catálogo de orígenes/allowlist de consultas
+├── context/                           # 🧠 Contexto semántico por origen (RAG de consultas)
+│   ├── README.md                      #    Convención de formato + flujo
+│   ├── PLANTILLA_CONTEXTO.md          #    Plantilla para proyectos nuevos
+│   └── cartera_db/                    #    Contexto del origen cartera_db
 ├── tests/                             # 🧪 Pruebas
 │   ├── unit/                          #    Tests unitarios (pytest, offline)
 │   └── integration/                   #    Scripts legacy (requieren servicios)
 ├── scripts/                           # 🛠️  Utilidades operativas
 │   ├── iniciar_api.py                 # ▶️  Iniciar API (desarrollo)
-│   ├── indexar_docs.py                # 📥 Indexación manual
+│   ├── indexar_docs.py                # 📥 Indexación manual (bots de documentos)
+│   ├── indexar_contexto.py            # 🧠 Indexar context/ (RAG de consultas)
+│   ├── sincronizar_contexto.py        # 🔄 Copiar contexto desde repos fuente + reindexar
 │   ├── generar_token_paperless.py     # 🔑 Generar token de Paperless
 │   ├── inspeccionar_chromadb.py       # 🔎 Inspeccionar ChromaDB
 │   ├── debug_busqueda.py              # 🔍 Depurar búsquedas
@@ -495,7 +525,7 @@ langchain/
 }
 ```
 
-**Ejemplo Response (con OpenAI):**
+**Ejemplo Response (con OpenAI / OpenCode):**
 ```json
 {
   "respuesta": "Análisis detallado de las políticas de vacaciones...",
@@ -509,7 +539,9 @@ langchain/
 }
 ```
 
-> **Nota:** Con `LOCALIA=true` (Ollama), el campo `estadisticas` será `null` (no hay monitoreo de tokens).
+> **Nota:** `estadisticas` depende del proveedor del chat (`LLM_PROVIDER`): con `openai` u
+> `opencode` se reportan tokens (con OpenCode/deepseek `costo_usd` sale 0 porque el callback
+> no conoce sus precios); con `ollama` el campo es `null`.
 
 **Ejemplo Response (POST /busqueda-semantica):**
 ```json
@@ -678,7 +710,7 @@ python -c "import requests; print(requests.get('http://localhost:8000/health').j
 ### 2. Test Automatizado
 
 ```bash
-python scripts/test_api_cliente.py
+python tests/integration/test_api_cliente.py
 ```
 
 Prueba todos los endpoints:
@@ -1819,25 +1851,25 @@ systemctl show bots-api
 
 ```bash
 # Test completo de todos los endpoints
-python3 scripts/test_api_cliente.py
+python3 tests/integration/test_api_cliente.py
 
 # Validar imports (sin necesidad de levantar la API)
-python3 scripts/test_api_imports.py
+python3 tests/integration/test_api_imports.py
 
 # Test con casos de uso reales
-python3 scripts/test_casos_reales.py
+python3 tests/integration/test_casos_reales.py
 
 # Test con datos realistas
-python3 scripts/test_realista.py
+python3 tests/integration/test_realista.py
 
 # Validación final (antes de despliegue)
-python3 scripts/validacion_final.py
+python3 tests/integration/validacion_final.py
 
 # Probar bots directamente (sin la API REST)
-python3 scripts/probar_bot_documentos.py    # Bot Simple
-python3 scripts/probar_bot_avanzado.py      # Bot Avanzado
-python3 scripts/prueba_bot_simple.py        # Prueba rápida
-python3 scripts/prueba_simple_bot_avanzado.py
+python3 tests/integration/probar_bot_documentos.py    # Bot Simple
+python3 tests/integration/probar_bot_avanzado.py      # Bot Avanzado
+python3 tests/integration/prueba_bot_simple.py        # Prueba rápida
+python3 tests/integration/prueba_simple_bot_avanzado.py
 
 # Health check
 curl http://localhost:8000/health
@@ -1859,18 +1891,20 @@ curl "http://localhost:8000/api/v1/bot-simple/documents?limite=5"
 
 ```bash
 # Indexación y ChromaDB
-python3 scripts/indexar_docs_simple.py       # Forzar reindexación bot simple
+python3 scripts/indexar_docs.py simple       # Forzar reindexación bot simple (Paperless)
+python3 scripts/indexar_contexto.py          # Indexar context/ (RAG del módulo de consultas)
+python3 scripts/sincronizar_contexto.py      # Copiar contexto desde repos fuente + reindexar
 python3 scripts/inspeccionar_chromadb.py     # Inspeccionar colecciones en ChromaDB
 python3 scripts/debug_busqueda.py            # Depurar resultados de búsqueda
 python3 scripts/crear_db_ejemplo.py          # Crear base de datos de ejemplo
 
 # Instalación y verificación
 python3 scripts/instalar_bot_avanzado.py     # Instalar dependencias bot avanzado
-python3 utils/verificar_ollama.py            # Ver modelos disponibles en Ollama
+python3 scripts/verificar_ollama.py            # Ver modelos disponibles en Ollama
 
 # Paperless
 python3 scripts/generar_token_paperless.py   # Generar/renovar token de Paperless
-python3 scripts/probar_paperless.py          # Probar conexión con Paperless
+python3 tests/integration/probar_paperless.py          # Probar conexión con Paperless
 
 # Reindexar vía API (sin detener el servidor)
 curl -X POST http://localhost:8000/api/v1/bot-avanzado/reindexar
@@ -2092,8 +2126,12 @@ PAPERLESS_TOKEN=tu_token_aqui
 OLLAMA_URL=https://ollama.tech-energy.lat
 OLLAMA_MODEL=phi4-mini:latest
 
-# OpenAI (Cloud)
-LOCALIA=false
+# Embeddings (true = Ollama local) y LLM de chat (default: opencode/deepseek)
+LOCALIA=true
+LLM_PROVIDER=opencode
+OPENCODE_API_KEY=sk-...
+
+# OpenAI (alternativa de chat/embeddings cloud)
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL_RAPIDO=gpt-4o-mini
 OPENAI_MODEL_RAZONAMIENTO=gpt-4o
@@ -2437,7 +2475,7 @@ Proyecto interno - GPT Services
 ## 🎯 Próximos Pasos
 
 1. ✅ **Ejecutar**: `python scripts/iniciar_api.py`
-2. ✅ **Validar**: `python scripts/test_api_cliente.py`
+2. ✅ **Validar**: `python tests/integration/test_api_cliente.py`
 3. ✅ **Explorar**: http://localhost:8000/docs
 4. 🚀 **Desplegar**: Configurar Nginx + systemd (ver arriba)
 5. 🔒 **Securizar**: Implementar autenticación y rate limiting
