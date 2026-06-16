@@ -1,20 +1,19 @@
 """Bot General - Consulta RH y Paperless usando IA"""
-import os
 import json
 import requests
 from typing import List, Dict
-from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
 
-# Cargar variables de entorno
-load_dotenv()
+# Configuración centralizada: el .env (fuente de verdad) se carga en app.core.config
+# anclado a la raíz del proyecto, no al CWD del proceso.
+from app.core.config import settings
 
-API_RH_URL = os.getenv('API_RH_URL')
-PAPERLESS_URL = os.getenv('PAPERLESS_URL')
-PAPERLESS_TOKEN = os.getenv('PAPERLESS_TOKEN')
-OLLAMA_URL = os.getenv('OLLAMA_URL')
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'phi4-mini:latest')
+API_RH_URL = settings.API_RH_URL
+PAPERLESS_URL = settings.PAPERLESS_URL
+PAPERLESS_TOKEN = settings.PAPERLESS_TOKEN
+OLLAMA_URL = settings.OLLAMA_URL
+OLLAMA_MODEL = settings.OLLAMA_MODEL
 
 
 class BotGeneral:

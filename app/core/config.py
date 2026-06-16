@@ -4,10 +4,18 @@
 `load_dotenv()` + `os.getenv(...)` dispersos por el código.
 """
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional
 
 from dotenv import load_dotenv
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Raíz del proyecto (carpeta que contiene .env, config/, context/, ...), calculada
+# desde la ubicación de ESTE archivo (app/core/config.py -> parents[2]). Anclar a la
+# raíz —y no al CWD del proceso— evita que el .env y los archivos de config "no se
+# encuentren" cuando el servicio arranca desde otro directorio (systemd/gunicorn/docker).
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Cargar el .env también en os.environ. pydantic-settings solo mapea los campos
 # declarados; las variables DSN/URL arbitrarias que referencia rules.yaml
@@ -16,14 +24,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # override=True => el .env es la fuente de verdad y PISA variables de entorno
 # preexistentes (p.ej. una DB_USERNAME que quedó fijada en la sesión de la shell).
 # Es lo esperado aquí: la configuración vive en .env (no se inyecta por systemd).
-load_dotenv(override=True)
+# Ruta ABSOLUTA al .env de la raíz: independiente del directorio de arranque.
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 
 class Settings(BaseSettings):
     """Configuración leída de variables de entorno / archivo .env."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
@@ -139,6 +148,23 @@ class Settings(BaseSettings):
 
     # Orígenes permitidos para CORS. "*" o lista separada por comas.
     CORS_ORIGINS: str = "*"
+
+    @field_validator(
+        "RULES_PATH", "CHROMA_DB_PATH", "CONTEXT_PATH", "DATABASE_PATH", "PIPER_VOICE_PATH",
+        mode="after",
+    )
+    @classmethod
+    def _ruta_absoluta(cls, valor: str) -> str:
+        """Resolver rutas relativas contra la raíz del proyecto (no contra el CWD).
+
+        Las rutas de archivo/carpeta de config (rules.yaml, context/, chroma_db, ...)
+        se anclan a PROJECT_ROOT para que el servicio las encuentre aunque arranque
+        desde otro directorio. Las rutas ya absolutas se respetan tal cual.
+        """
+        if not valor:
+            return valor
+        p = Path(valor)
+        return str(p if p.is_absolute() else (PROJECT_ROOT / p).resolve())
 
     @property
     def cors_origins_list(self) -> List[str]:
