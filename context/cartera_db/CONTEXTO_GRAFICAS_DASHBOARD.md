@@ -59,6 +59,38 @@ clientes.id` · `personnel_acronyms.user_id → users.id`. Nombre visible de un 
 = `COALESCE(clientes.alias, clientes.razon_social)`. Los catálogos usan borrado
 lógico: filtrar siempre `status = 1`.
 
+[regla_busqueda_nombre] Resolución de un proyecto/oportunidad o cliente «por
+nombre» (texto libre que NO es un CP/DN exacto). `proyectos` NO tiene columna
+"nombre": el nombre visible se arma del CLIENTE (`COALESCE(clientes.alias,
+clientes.razon_social)`) + `tech_reference`/`cp_numero`; por eso buscar el nombre
+de un proyecto es, casi siempre, buscar a su cliente. NUNCA uses `=` para un
+nombre; resuélvelo SIEMPRE con JOIN a `clientes` y coincidencia progresiva (de
+estricta a laxa, parando en la primera que dé filas): 1) subcadena
+case-insensitive `LOWER(col) LIKE LOWER('%termino%')` sobre `p.cp_numero,
+p.dn_numero, p.tech_reference, p.alcance, p.usuario_final, c.razon_social,
+c.alias`; 2) si el término trae varias palabras, exige cada token por separado
+(AND de LIKE) para tolerar orden/palabras extra; 3) fallback fonético para
+errores de dedo o de dictado (p. ej. «arseal» → «Arcelor»):
+`LEFT(SOUNDEX(c.razon_social),4) = LEFT(SOUNDEX('termino'),4)`. Devuelve siempre
+cp_numero + cliente + estado para desambiguar cuando hay varias coincidencias.
+
+SQL equivalente [regla_busqueda_nombre] (buscar proyecto/cliente por nombre, ej. «arseal»):
+```sql
+SELECT p.id, p.cp_numero, p.dn_numero, p.tech_reference,
+       COALESCE(c.alias, c.razon_social) AS cliente, p.estado, p.monto_usd
+FROM proyectos p
+LEFT JOIN clientes c ON c.id = p.cliente_id
+WHERE LOWER(p.cp_numero)      LIKE LOWER('%arseal%')
+   OR LOWER(p.dn_numero)      LIKE LOWER('%arseal%')
+   OR LOWER(p.tech_reference) LIKE LOWER('%arseal%')
+   OR LOWER(p.alcance)        LIKE LOWER('%arseal%')
+   OR LOWER(p.usuario_final)  LIKE LOWER('%arseal%')
+   OR LOWER(c.razon_social)   LIKE LOWER('%arseal%')
+   OR LOWER(c.alias)          LIKE LOWER('%arseal%')
+   OR LEFT(SOUNDEX(c.razon_social),4) = LEFT(SOUNDEX('arseal'),4)
+ORDER BY p.updated_at DESC;
+```
+
 ---
 
 ## Página `/` — Dashboard ejecutivo
@@ -77,23 +109,28 @@ de consultas.
 
 [dash_detalle_ofertas] pagina: / · tipo_grafica: tabla · tabla_base: proyectos ·
 relacionadas: clientes, proyecto_miembros, users · en_allowlist: sí.
-Contexto: lista todas las oportunidades (`tipo='oportunidad'`, sin filtro de año) con
-nombre visible (alias del cliente + tech_reference o CP), monto en millones USD y el
-% de probabilidad ACTUAL con su banda (el "actual" es la última ponderación no nula
-del historial; si no hay historial usa `proyectos.ponderacion`). Cada fila se expande
-al historial mensual (ver [dash_historial_mes]).
+Contexto: lista todas las oportunidades (`tipo='oportunidad'`, sin filtro de año),
+ordenadas por `cp_numero`. Tiene 3 columnas visibles: 1) «Proyecto (CP)» —en la línea
+principal la referencia técnica (`tech_reference`, fallback `cp_numero`) seguida del CP,
+y debajo, en gris, el NOMBRE DE LA EMPRESA asociada (`clientes.razon_social`, fallback
+`alias`); 2) «Monto USD» (`monto_usd`, también disponible en millones); 3) «Actual» =
+% de probabilidad ACTUAL con su banda de color (el "actual" es la última ponderación no
+nula del historial; si no hay historial usa `proyectos.ponderacion`). El dataset también
+trae responsable (gerente de proyectos o quien elaboró), estado y plazo. Cada fila se
+expande al historial mensual (ver [dash_historial_mes]).
 Responde preguntas como: «¿qué ofertas tenemos y en qué probabilidad van?», «lista de
-oportunidades con su monto y % actual», «¿quién es el responsable de cada oferta?».
-Columnas: nombre (cliente + ref), cp_numero, monto_usd, ponderación actual + banda,
-responsable (gerente de proyectos o quien elaboró).
+oportunidades con su empresa, monto y % actual», «¿de qué empresa/cliente es la oferta
+X?», «¿quién es el responsable de cada oferta?».
+Columnas: tech_reference, cp_numero, empresa (clientes.razon_social), monto_usd,
+ponderación actual + banda; responsable en el dataset.
 Fuente: `DashboardIndex::getStatusOfertasDataProperty()`.
 
 SQL equivalente [dash_detalle_ofertas] (página /):
 ```sql
-SELECT p.id, p.cp_numero, p.tech_reference, p.monto_usd, p.estado,
+SELECT p.id, p.tech_reference, p.cp_numero, p.monto_usd, p.estado,
        p.ponderacion AS ponderacion_actual,
-       CONCAT(COALESCE(c.alias, c.razon_social), ' ',
-              COALESCE(p.tech_reference, p.cp_numero, '—')) AS nombre,
+       c.razon_social AS empresa,
+       COALESCE(c.alias, c.razon_social) AS cliente,
        COALESCE(gp.name, el.name, 'Sin asignar') AS responsable
 FROM proyectos p
 LEFT JOIN clientes c           ON c.id = p.cliente_id
@@ -101,7 +138,7 @@ LEFT JOIN proyecto_miembros pm ON pm.proyecto_id = p.id AND pm.rol = 'gerente_pr
 LEFT JOIN users gp             ON gp.id = pm.user_id
 LEFT JOIN users el             ON el.id = p.elaboro_id
 WHERE p.tipo = 'oportunidad'
-ORDER BY p.id;
+ORDER BY p.cp_numero;
 ```
 
 ### [dash_historial_mes] Tabla anidada «Detalle por mes» — página /
@@ -131,11 +168,16 @@ ORDER BY h.anio, h.mes;
 [dash_evolucion_cartera] pagina: / · tipo_grafica: grafico:line · tabla_base:
 proyectos · relacionadas: proyecto_ponderacion_historial, ponderaciones ·
 en_allowlist: sí.
-Contexto: gráfica de líneas (Chart.js) con 6 series por mes: el monto bruto agrupado
+Contexto: gráfica de líneas (Chart.js) con 6 series por mes: el monto BRUTO agrupado
 en las 5 bandas de probabilidad (100% Contratada, 75% Probable, 25% Posible, 10%
 Remoto, 0% Perdida) más la línea overlay «Cartera esperada (ponderada)» =
-Σ `monto_usd × porcentaje_del_mes / 100`. Eje Y en millones de USD. Solo suma meses
-con probabilidad > 0. Sin filtro de año: cubre todos los meses con snapshot.
+Σ `monto_usd × porcentaje_del_mes / 100` (línea morada más gruesa, dibujada al frente).
+Cada oferta aporta su monto a UNA sola banda por mes, según su % de ESE mes. Eje Y en
+millones de USD (paso $5M, mínimo 0). Solo suma meses con probabilidad > 0; sin filtro
+de año, cubre todos los meses con snapshot en `proyecto_ponderacion_historial`. Se
+renderiza en la sección «Evolución de la cartera esperada», a la izquierda (3/5) de la
+card «Por nivel de probabilidad» (ver [dash_nivel_probabilidad]) y sus KPIs Bruto/
+Esperado/Eficiencia (ver [dash_kpis_cartera]).
 Responde preguntas como: «¿cómo evoluciona la cartera esperada mes a mes?»,
 «evolución del pipeline por banda de probabilidad», «¿cuánto monto contratado había
 en marzo?».
