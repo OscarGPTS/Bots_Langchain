@@ -254,6 +254,130 @@ FROM proyectos p
 WHERE p.tipo = 'oportunidad' AND p.monto_usd > 0;
 ```
 
+### Funcionalidades de generación por consulta (gatilladas por palabra clave) — página /
+
+[func_intro_dashboard] Estas entradas son ESTRATEGIAS de generación, no vistas estáticas:
+cuando la consulta combina una PALABRA CLAVE de una visualización del dashboard con un
+NOMBRE de cliente o proyecto (p. ej. «evolución de la cartera esperada de Sarreal»), el
+servicio debe: 1) RESOLVER primero el nombre con [regla_busqueda_nombre] (subcadena →
+AND de tokens → fonético SOUNDEX) para obtener el/los `proyectos` — NUNCA responder «0
+filas / sin datos» sin antes intentar el match laxo y fonético (Sarreal ≈ Arcelor); 2)
+reproducir la MISMA visualización del dashboard pero FILTRADA a esos proyectos (no toda
+la cartera); 3) devolver el `tipo_grafica` y la configuración indicados abajo. Funciona
+aunque el cliente tenga un solo proyecto: la serie se arma igual con una sola oferta.
+
+[func_evolucion_cartera_filtrada] funcionalidad: «Evolución de la cartera esperada»
+filtrada por cliente/proyecto · pagina: / · tipo_grafica: grafico:line · tabla_base:
+proyectos · relacionadas: clientes, proyecto_ponderacion_historial, ponderaciones ·
+en_allowlist: sí. Palabras clave (gatillo): «evolución de la cartera esperada»,
+«evolución de (la) cartera», «evolución del pipeline», «cómo evoluciona la cartera»,
+«evolución mensual ponderada», «cartera esperada mes a mes» + nombre de cliente o
+proyecto. Qué hace: idéntica a [dash_evolucion_cartera] pero acotada a los proyectos del
+cliente/proyecto resuelto (si solo hay 1, grafica ese 1 con sus snapshots mensuales).
+Config render (line, Chart.js): eje X = meses cronológicos (`anio*100+mes`, etiqueta «Ene
+26»); 6 series → 5 de banda con monto BRUTO (p100 «100% Contratada» rgb(16,185,129); p75
+«75% Probable» rgb(6,182,212); p25 «25% Posible» rgb(245,158,11); p10 «10% Remoto»
+rgb(248,113,113); p0 «0% Perdida» rgb(148,163,184)) + línea overlay «Cartera esperada
+(ponderada)» rgb(139,92,246) (más gruesa, al frente) = Σ `monto_usd × %_del_mes / 100`.
+Eje Y millones USD (mín 0, paso $5M), fill tensión 0.4, tooltip «$X.XXM», solo meses con
+% > 0. Complemento opcional: «Por nivel de probabilidad» (ver [dash_nivel_probabilidad])
+con el MISMO filtro de cliente.
+Responde: «generame la evolución de la cartera esperada de los proyectos de Sarreal»,
+«cómo evoluciona la cartera esperada del cliente X», «evolución del pipeline de la oferta
+CP-…».
+Fuente: lógica de `DashboardIndex::getStatusOfertasDataProperty()` → `carteraEvolucion`.
+
+SQL equivalente [func_evolucion_cartera_filtrada] (:termino = nombre buscado, ej. 'Sarreal'):
+```sql
+SELECT h.anio, h.mes,
+       CASE WHEN pond.porcentaje = 100 THEN '100% Contratada'
+            WHEN pond.porcentaje BETWEEN 75 AND 99 THEN '75% Probable'
+            WHEN pond.porcentaje BETWEEN 25 AND 74 THEN '25% Posible'
+            WHEN pond.porcentaje BETWEEN 10 AND 24 THEN '10% Remoto'
+            ELSE '0% Perdida' END AS banda,
+       SUM(p.monto_usd) AS bruto,
+       SUM(p.monto_usd * pond.porcentaje / 100) AS ponderado
+FROM proyectos p
+JOIN clientes c                       ON c.id = p.cliente_id
+JOIN proyecto_ponderacion_historial h ON h.proyecto_id = p.id
+JOIN ponderaciones pond               ON pond.id = h.ponderacion_id
+WHERE p.tipo = 'oportunidad' AND pond.porcentaje > 0
+  AND ( LOWER(c.razon_social)   LIKE LOWER('%:termino%')
+     OR LOWER(c.alias)          LIKE LOWER('%:termino%')
+     OR LOWER(p.tech_reference) LIKE LOWER('%:termino%')
+     OR LOWER(p.cp_numero)      LIKE LOWER('%:termino%')
+     OR LEFT(SOUNDEX(c.razon_social),4) = LEFT(SOUNDEX(':termino'),4) )
+GROUP BY h.anio, h.mes, banda
+ORDER BY h.anio, h.mes;
+```
+
+[func_detalle_ofertas_filtrada] funcionalidad: «Detalle de Ofertas» filtrada por cliente
+· pagina: / · tipo_grafica: tabla · tabla_base: proyectos · relacionadas: clientes,
+proyecto_miembros, users · en_allowlist: sí. Palabras clave (gatillo): «detalle de
+ofertas», «detalle de oportunidades», «ofertas de», «oportunidades de», «proyectos de»,
+«qué ofertas/oportunidades tiene» + nombre de cliente. Qué hace: idéntica a
+[dash_detalle_ofertas] pero acotada a los proyectos del cliente resuelto. Las COLUMNAS se
+ajustan a lo que pida el usuario; por defecto: tech_reference, cp_numero, empresa
+(clientes.razon_social), monto_usd, ponderación actual + banda y responsable. Devuelve
+`tipo_grafica: tabla`; si el usuario pide explícitamente graficar esas ofertas, usar
+`grafico:bar` con `monto_usd` (o cartera esperada) por oferta.
+Responde: «detalle de ofertas de Sarreal», «qué oportunidades tiene el cliente X y su
+monto», «proyectos de Arcelor con su % actual».
+Fuente: lógica de `DashboardIndex::getStatusOfertasDataProperty()`.
+
+SQL equivalente [func_detalle_ofertas_filtrada] (:termino = nombre buscado):
+```sql
+SELECT p.tech_reference, p.cp_numero, p.monto_usd, p.estado,
+       p.ponderacion AS ponderacion_actual,
+       c.razon_social AS empresa,
+       COALESCE(gp.name, el.name, 'Sin asignar') AS responsable
+FROM proyectos p
+JOIN clientes c                ON c.id = p.cliente_id
+LEFT JOIN proyecto_miembros pm ON pm.proyecto_id = p.id AND pm.rol = 'gerente_proyectos'
+LEFT JOIN users gp             ON gp.id = pm.user_id
+LEFT JOIN users el             ON el.id = p.elaboro_id
+WHERE p.tipo = 'oportunidad'
+  AND ( LOWER(c.razon_social) LIKE LOWER('%:termino%')
+     OR LOWER(c.alias)        LIKE LOWER('%:termino%')
+     OR LEFT(SOUNDEX(c.razon_social),4) = LEFT(SOUNDEX(':termino'),4) )
+ORDER BY p.cp_numero;
+```
+
+[func_cartera_por_banda] funcionalidad: «Cartera esperada por banda (actual)» — versión
+GRAFICABLE HOY y FALLBACK de la evolución mensual · pagina: / · tipo_grafica: grafico:bar
+(o pie) · tabla_base: proyectos · relacionadas: clientes · en_allowlist: sí. Palabras clave
+(gatillo): «cartera esperada», «gráfica de la cartera esperada», «cartera esperada por banda»,
+«monto ponderado por banda», «distribución de la cartera/pipeline por probabilidad». IMPORTANTE:
+la evolución MENSUAL ([dash_evolucion_cartera]/[func_evolucion_cartera_filtrada]) depende de
+`proyecto_ponderacion_historial`; si esa tabla está vacía esa consulta da 0 filas. En ese caso, o
+cuando no se pide explícitamente «mes a mes», usa ESTA funcionalidad: agrupa por banda con la
+ponderación ACTUAL (`proyectos.ponderacion`, SIN historial) y devuelve por banda nº de ofertas,
+monto BRUTO (Σ monto_usd) y ESPERADO (Σ monto_usd*ponderacion/100). No necesita snapshots.
+Filtrable por cliente con [regla_busqueda_nombre]. Render: bar/pie, etiqueta=banda, valor=esperado.
+Responde: «generame la gráfica de la cartera esperada», «cartera esperada por banda»,
+«distribución del pipeline por probabilidad», «cartera esperada de <cliente>» (sin eje temporal).
+Fuente: lógica de `DashboardIndex` → `levelResumen` / `carteraKpis`.
+
+SQL equivalente [func_cartera_por_banda] (filtro por cliente opcional con :termino):
+```sql
+SELECT CASE WHEN p.ponderacion = 100 THEN '100% Contratada'
+            WHEN p.ponderacion BETWEEN 75 AND 99 THEN '75% Probable'
+            WHEN p.ponderacion BETWEEN 25 AND 74 THEN '25% Posible'
+            WHEN p.ponderacion BETWEEN 10 AND 24 THEN '10% Remoto'
+            ELSE '0% Perdida' END AS banda,
+       COUNT(*) AS ofertas,
+       SUM(p.monto_usd) AS bruto,
+       SUM(p.monto_usd * p.ponderacion / 100) AS esperado
+FROM proyectos p
+LEFT JOIN clientes c ON c.id = p.cliente_id
+WHERE p.tipo = 'oportunidad' AND p.monto_usd > 0
+  -- filtro opcional por cliente:
+  -- AND ( LOWER(c.razon_social) LIKE LOWER('%:termino%') OR LOWER(c.alias) LIKE LOWER('%:termino%')
+  --       OR LEFT(SOUNDEX(c.razon_social),4) = LEFT(SOUNDEX(':termino'),4) )
+GROUP BY banda
+ORDER BY esperado DESC;
+```
+
 ---
 
 ## Página `/oportunidades` — Listado de oportunidades

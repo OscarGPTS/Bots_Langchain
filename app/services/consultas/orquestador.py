@@ -124,6 +124,29 @@ def _procesar_sql(consulta, origen_clave, origen, candidatos, nombres, formato, 
 
     columnas, filas, truncado = ejecutor_sql.ejecutar(origen_clave, origen, sql_seguro)
 
+    # Fallback de gráfica: una serie basada en el historial mensual de ponderación
+    # quedó vacía porque `proyecto_ponderacion_historial` no tiene snapshots. En vez
+    # de responder "0 filas", se reintenta con la versión por banda usando la
+    # ponderación ACTUAL (sin historial), preservando los filtros de la consulta.
+    if (
+        not filas
+        and generado.get("tipo") == "grafico"
+        and "proyecto_ponderacion_historial" in sql_seguro.lower()
+    ):
+        rescatado = _fallback_cartera_por_banda(
+            consulta, tablas_contexto, max_filas, join_hints, origen,
+            contexto_vistas, allowlist, origen_clave,
+        )
+        if rescatado is not None:
+            columnas, filas, truncado, sql_seguro, generado_fb = rescatado
+            # Conservar el título original; tomar tipo/gráfico de la consulta de rescate.
+            generado = {**generado_fb, "titulo": generado.get("titulo", consulta[:120])}
+            advertencias = (advertencias or []) + [
+                "La evolución mensual no tiene datos (no hay snapshots en "
+                "proyecto_ponderacion_historial); se muestra la cartera esperada por "
+                "banda según la ponderación actual."
+            ]
+
     return formateador.construir_respuesta(
         origen_clave=origen_clave,
         origen_tipo="sql_mysql",
@@ -141,6 +164,49 @@ def _procesar_sql(consulta, origen_clave, origen, candidatos, nombres, formato, 
         grafico_spec=generado.get("grafico"),
         usuario=usuario,
     )
+
+
+def _fallback_cartera_por_banda(
+    consulta, tablas_contexto, max_filas, join_hints, origen,
+    contexto_vistas, allowlist, origen_clave,
+):
+    """Reintenta una gráfica de cartera SIN `proyecto_ponderacion_historial`.
+
+    Reescribe la consulta agrupando por banda con la ponderación ACTUAL
+    (`proyectos.ponderacion`). Devuelve `(columnas, filas, truncado, sql, generado)`
+    si la nueva consulta sí trae filas; `None` si no se pudo rescatar (sigue vacía o
+    falla), para que el llamador conserve la respuesta original.
+    """
+    hint = (
+        "[NOTA INTERNA] La tabla proyecto_ponderacion_historial está VACÍA (sin "
+        "snapshots mensuales), por lo que una consulta basada en ella devuelve 0 "
+        "filas. Reescribe la consulta SIN usar proyecto_ponderacion_historial ni "
+        "ponderaciones: agrupa las oportunidades por banda usando la ponderación "
+        "ACTUAL (proyectos.ponderacion) y devuelve por banda COUNT(*) AS ofertas, "
+        "SUM(monto_usd) AS bruto, SUM(monto_usd*ponderacion/100) AS esperado, con "
+        "tipo='grafico'. CONSERVA cualquier filtro por cliente/nombre de la consulta original."
+    )
+    try:
+        generado = generador.generar_sql(
+            f"{consulta}\n\n{hint}",
+            tablas_contexto,
+            max_filas,
+            join_hints,
+            contexto_origen=origen.get("contexto"),
+            contexto_vistas=contexto_vistas,
+        )
+        sql_seguro, _adv = seguridad_sql.validar_y_asegurar(
+            generado["sql"], tablas_permitidas=allowlist, max_filas=max_filas
+        )
+        if "proyecto_ponderacion_historial" in sql_seguro.lower():
+            return None  # el modelo insistió en el historial; no rescatamos
+        columnas, filas, truncado = ejecutor_sql.ejecutar(origen_clave, origen, sql_seguro)
+        if not filas:
+            return None
+        return columnas, filas, truncado, sql_seguro, generado
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Fallback de cartera por banda falló: %s", e)
+        return None
 
 
 def _procesar_rest(consulta, origen_clave, origen, candidatos, nombres, formato, inicio, usuario=None):
