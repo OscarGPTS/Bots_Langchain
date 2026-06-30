@@ -53,7 +53,8 @@ por valor exacto de `ponderacion`: 10 → Remoto, 25 → Posible, 50 → Probabl
 `MAX(precio_venta_final)` por proyecto) · `proyecto_miembros(proyecto_id, user_id,
 rol)`: el responsable/gerente es `rol='gerente_proyectos'` → `users.name` ·
 `proyecto_ponderacion_historial(proyecto_id, ponderacion_id, anio, mes)` →
-`ponderaciones.id` (snapshot mensual del % de cada oferta) ·
+`ponderaciones.id` (LOG de cambios del % de cada oferta: puede haber VARIAS filas por
+proyecto y mes; el valor de un mes = el último cambio de ese mes, `MAX(id)`) ·
 `contactos_cliente.cliente_id → clientes.id` · `tech_references.cliente_id →
 clientes.id` · `personnel_acronyms.user_id → users.id`. Nombre visible de un cliente
 = `COALESCE(clientes.alias, clientes.razon_social)`. Los catálogos usan borrado
@@ -89,6 +90,45 @@ WHERE LOWER(p.cp_numero)      LIKE LOWER('%arseal%')
    OR LOWER(c.alias)          LIKE LOWER('%arseal%')
    OR LEFT(SOUNDEX(c.razon_social),4) = LEFT(SOUNDEX('arseal'),4)
 ORDER BY p.updated_at DESC;
+```
+
+[regla_historial_porcentaje] Qué tabla consultar para el % de probabilidad (ponderación)
+de una oferta. Hay DOS casos y NO se resuelven con la misma tabla: (1) % ACTUAL / vigente
+→ `proyectos.ponderacion` (entero 0–100, SIEMPRE presente, una fila por oferta). Úsalo
+para «probabilidad actual», «cartera esperada hoy», KPIs, distribución por banda y
+cualquier pregunta sin eje temporal. NO necesita el historial. (2) HISTORIAL / EVOLUCIÓN
+del % mes a mes → `proyecto_ponderacion_historial` (LOG de cambios; clave lógica
+`proyecto_id, anio, mes` pero puede haber VARIAS filas por mes). El valor de un mes es
+el ÚLTIMO cambio de ese mes (`MAX(id)`); para todos los cambios en el tiempo, ordena por
+`id`/`created_at`. JOIN `ponderaciones` para leer el `porcentaje`. Úsalo para «cómo ha
+evolucionado», «en qué mes subió a 75», «historial de cambios», «evolución de la cartera».
+REGLA DE RELLENO (crítica, no omitir): NO todas las ofertas tienen snapshot. Si pides
+historial/evolución y una oferta no tiene fila en un mes, arrastra su último snapshot
+conocido (carry-forward) y, si nunca tuvo snapshot, usa su `proyectos.ponderacion` actual
+(COALESCE). Así TODA oferta aporta su % aunque no lleve historial; sin este fallback las
+ofertas sin snapshot salen como 0% o desaparecen de la evolución.
+
+SQL equivalente [regla_historial_porcentaje] (% por mes con fallback al % actual):
+```sql
+-- Una oferta o todas: trae el % del mes pedido (ÚLTIMO cambio del mes, MAX(id));
+-- si no hubo ningún cambio ese mes, cae al % actual.
+SELECT p.id, p.cp_numero,
+       COALESCE(pond.porcentaje, p.ponderacion) AS porcentaje_mes,
+       (h.id IS NOT NULL) AS es_cambio_real
+FROM proyectos p
+LEFT JOIN proyecto_ponderacion_historial h
+       ON h.id = (SELECT MAX(h2.id) FROM proyecto_ponderacion_historial h2
+                  WHERE h2.proyecto_id = p.id AND h2.anio = :anio AND h2.mes = :mes)
+LEFT JOIN ponderaciones pond ON pond.id = h.ponderacion_id
+WHERE p.tipo = 'oportunidad';            -- + filtro por proyecto/cliente si aplica
+-- Serie mensual completa: arma el eje con los meses distintos existentes
+-- (SELECT DISTINCT anio, mes FROM proyecto_ponderacion_historial) y aplica este
+-- MAX(id)+COALESCE por mes; carry-forward (último cambio previo) es el refinamiento
+-- ideal, pero como mínimo SIEMPRE cae a proyectos.ponderacion.
+-- Historial de TODOS los cambios de una oferta (no solo el último del mes):
+--   SELECT h.anio, h.mes, pond.porcentaje, h.notas, h.created_at
+--   FROM proyecto_ponderacion_historial h JOIN ponderaciones pond ON pond.id = h.ponderacion_id
+--   WHERE h.proyecto_id = :id ORDER BY h.id;     -- cronológico
 ```
 
 ---
@@ -147,9 +187,12 @@ ORDER BY p.cp_numero;
 proyecto_ponderacion_historial · relacionadas: ponderaciones · en_allowlist: sí.
 Contexto: fila expandida de la tabla de ofertas del dashboard. Matriz mes × % de
 ponderación de una oferta, coloreada por banda. Los meses del eje son la unión de
-todos los snapshots existentes (clave `anio*100+mes`, etiquetas tipo «Ene 26»); si
-una oferta no tiene snapshot en un mes la celda queda vacía. Si ninguna oferta tiene
-historial, se muestra una sola columna «Actual» con `proyectos.ponderacion`.
+todos los snapshots existentes (clave `anio*100+mes`, etiquetas tipo «Ene 26»). Regla
+de relleno: si una oferta no tiene snapshot en un mes se arrastra su último snapshot
+conocido (carry-forward) y, si nunca ha tenido snapshot, se usa su % ACTUAL
+(`proyectos.ponderacion`) para que SIEMPRE aporte su porcentaje; solo quedan vacíos los
+meses anteriores al primer snapshot de una oferta que sí lleva historial. Si ninguna
+oferta tiene historial, se muestra una sola columna «Actual» con `proyectos.ponderacion`.
 Responde preguntas como: «¿cómo ha evolucionado la probabilidad de la oferta X?»,
 «historial mensual de ponderación de un proyecto», «¿en qué mes subió a 75%?».
 Fuente: `DashboardIndex::getStatusOfertasDataProperty()`.
@@ -172,9 +215,12 @@ Contexto: gráfica de líneas (Chart.js) con 6 series por mes: el monto BRUTO ag
 en las 5 bandas de probabilidad (100% Contratada, 75% Probable, 25% Posible, 10%
 Remoto, 0% Perdida) más la línea overlay «Cartera esperada (ponderada)» =
 Σ `monto_usd × porcentaje_del_mes / 100` (línea morada más gruesa, dibujada al frente).
-Cada oferta aporta su monto a UNA sola banda por mes, según su % de ESE mes. Eje Y en
-millones de USD (paso $5M, mínimo 0). Solo suma meses con probabilidad > 0; sin filtro
-de año, cubre todos los meses con snapshot en `proyecto_ponderacion_historial`. Se
+Cada oferta aporta su monto a UNA sola banda por mes, según su % de ESE mes. El % del
+mes sale del snapshot si existe; si no, del último snapshot conocido (carry-forward) y,
+si la oferta no tiene historial, de su % ACTUAL (`proyectos.ponderacion`) — así toda
+oferta con monto y % > 0 aparece aunque no tenga snapshot. Eje Y en millones de USD
+(paso $5M, mínimo 0). Solo suma meses con probabilidad > 0; sin filtro de año, cubre
+todos los meses con snapshot en `proyecto_ponderacion_historial`. Se
 renderiza en la sección «Evolución de la cartera esperada», a la izquierda (3/5) de la
 card «Por nivel de probabilidad» (ver [dash_nivel_probabilidad]) y sus KPIs Bruto/
 Esperado/Eficiencia (ver [dash_kpis_cartera]).
@@ -182,23 +228,37 @@ Responde preguntas como: «¿cómo evoluciona la cartera esperada mes a mes?»,
 «evolución del pipeline por banda de probabilidad», «¿cuánto monto contratado había
 en marzo?».
 Fuente: `DashboardIndex::getStatusOfertasDataProperty()` → `carteraEvolucion`.
+**REGLA CRÍTICA (no omitir): NUNCA hagas `JOIN` (INNER) a
+`proyecto_ponderacion_historial` para esta evolución** — esa tabla suele estar VACÍA o
+tener pocas ofertas, y un INNER JOIN deja fuera a la mayoría (devuelve 0 filas → «no hay
+datos», que NO es lo que muestra la gráfica). El eje de meses se arma con los meses
+distintos del historial UNION el mes actual; el % de cada oferta por mes es su último
+snapshot ≤ ese mes (carry-forward) y, si no tiene, `proyectos.ponderacion` (COALESCE).
+Así SIEMPRE devuelve datos (mínimo un punto = mes actual con la cartera esperada actual).
 
 SQL equivalente [dash_evolucion_cartera] (página /):
 ```sql
-SELECT h.anio, h.mes,
-       CASE WHEN pond.porcentaje = 100 THEN '100% Contratada'
-            WHEN pond.porcentaje BETWEEN 75 AND 99 THEN '75% Probable'
-            WHEN pond.porcentaje BETWEEN 25 AND 74 THEN '25% Posible'
-            WHEN pond.porcentaje BETWEEN 10 AND 24 THEN '10% Remoto'
-            ELSE '0% Perdida' END AS banda,
+WITH meses AS (   -- eje temporal; el mes actual SIEMPRE entra para no quedar vacío
+    SELECT DISTINCT anio, mes FROM proyecto_ponderacion_historial
+    UNION SELECT YEAR(CURDATE()), MONTH(CURDATE())
+)
+SELECT CONCAT(m.anio, '-', LPAD(m.mes, 2, '0')) AS periodo,
        SUM(p.monto_usd) AS bruto,
-       SUM(p.monto_usd * pond.porcentaje / 100) AS ponderado
-FROM proyectos p
-JOIN proyecto_ponderacion_historial h ON h.proyecto_id = p.id
-JOIN ponderaciones pond               ON pond.id = h.ponderacion_id
-WHERE p.tipo = 'oportunidad' AND pond.porcentaje > 0
-GROUP BY h.anio, h.mes, banda
-ORDER BY h.anio, h.mes;
+       SUM(p.monto_usd * COALESCE((
+           SELECT pond.porcentaje
+           FROM proyecto_ponderacion_historial h
+           JOIN ponderaciones pond ON pond.id = h.ponderacion_id AND pond.status = 1
+           WHERE h.proyecto_id = p.id AND (h.anio * 100 + h.mes) <= (m.anio * 100 + m.mes)
+           ORDER BY h.anio * 100 + h.mes DESC, h.id DESC LIMIT 1
+       ), p.ponderacion) / 100) AS esperado          -- % del mes: snapshot→carry-forward→actual
+FROM meses m
+CROSS JOIN proyectos p
+WHERE p.tipo = 'oportunidad'
+  AND p.estado NOT IN ('cancelado', 'perdido', 'archivado')
+  AND p.monto_usd > 0
+GROUP BY m.anio, m.mes
+ORDER BY m.anio, m.mes;
+-- Para split por banda: aplica el mismo % (la expresión COALESCE) dentro del CASE de banda.
 ```
 
 ### [dash_nivel_probabilidad] Card «Por nivel de probabilidad» — página /
@@ -287,28 +347,38 @@ Responde: «generame la evolución de la cartera esperada de los proyectos de Sa
 CP-…».
 Fuente: lógica de `DashboardIndex::getStatusOfertasDataProperty()` → `carteraEvolucion`.
 
+Misma REGLA CRÍTICA que [dash_evolucion_cartera]: NO uses INNER JOIN al historial;
+% del mes = snapshot ≤ mes (carry-forward) → `proyectos.ponderacion` (COALESCE); el mes
+actual siempre entra para no devolver «sin datos» aunque el cliente no tenga snapshots.
+
 SQL equivalente [func_evolucion_cartera_filtrada] (:termino = nombre buscado, ej. 'Sarreal'):
 ```sql
-SELECT h.anio, h.mes,
-       CASE WHEN pond.porcentaje = 100 THEN '100% Contratada'
-            WHEN pond.porcentaje BETWEEN 75 AND 99 THEN '75% Probable'
-            WHEN pond.porcentaje BETWEEN 25 AND 74 THEN '25% Posible'
-            WHEN pond.porcentaje BETWEEN 10 AND 24 THEN '10% Remoto'
-            ELSE '0% Perdida' END AS banda,
+WITH meses AS (
+    SELECT DISTINCT anio, mes FROM proyecto_ponderacion_historial
+    UNION SELECT YEAR(CURDATE()), MONTH(CURDATE())
+)
+SELECT CONCAT(m.anio, '-', LPAD(m.mes, 2, '0')) AS periodo,
        SUM(p.monto_usd) AS bruto,
-       SUM(p.monto_usd * pond.porcentaje / 100) AS ponderado
-FROM proyectos p
-JOIN clientes c                       ON c.id = p.cliente_id
-JOIN proyecto_ponderacion_historial h ON h.proyecto_id = p.id
-JOIN ponderaciones pond               ON pond.id = h.ponderacion_id
-WHERE p.tipo = 'oportunidad' AND pond.porcentaje > 0
+       SUM(p.monto_usd * COALESCE((
+           SELECT pond.porcentaje
+           FROM proyecto_ponderacion_historial h
+           JOIN ponderaciones pond ON pond.id = h.ponderacion_id AND pond.status = 1
+           WHERE h.proyecto_id = p.id AND (h.anio * 100 + h.mes) <= (m.anio * 100 + m.mes)
+           ORDER BY h.anio * 100 + h.mes DESC, h.id DESC LIMIT 1
+       ), p.ponderacion) / 100) AS esperado
+FROM meses m
+CROSS JOIN proyectos p
+JOIN clientes c ON c.id = p.cliente_id
+WHERE p.tipo = 'oportunidad'
+  AND p.estado NOT IN ('cancelado', 'perdido', 'archivado')
+  AND p.monto_usd > 0
   AND ( LOWER(c.razon_social)   LIKE LOWER('%:termino%')
      OR LOWER(c.alias)          LIKE LOWER('%:termino%')
      OR LOWER(p.tech_reference) LIKE LOWER('%:termino%')
      OR LOWER(p.cp_numero)      LIKE LOWER('%:termino%')
      OR LEFT(SOUNDEX(c.razon_social),4) = LEFT(SOUNDEX(':termino'),4) )
-GROUP BY h.anio, h.mes, banda
-ORDER BY h.anio, h.mes;
+GROUP BY m.anio, m.mes
+ORDER BY m.anio, m.mes;
 ```
 
 [func_detalle_ofertas_filtrada] funcionalidad: «Detalle de Ofertas» filtrada por cliente
@@ -348,9 +418,9 @@ GRAFICABLE HOY y FALLBACK de la evolución mensual · pagina: / · tipo_grafica:
 (o pie) · tabla_base: proyectos · relacionadas: clientes · en_allowlist: sí. Palabras clave
 (gatillo): «cartera esperada», «gráfica de la cartera esperada», «cartera esperada por banda»,
 «monto ponderado por banda», «distribución de la cartera/pipeline por probabilidad». IMPORTANTE:
-la evolución MENSUAL ([dash_evolucion_cartera]/[func_evolucion_cartera_filtrada]) depende de
-`proyecto_ponderacion_historial`; si esa tabla está vacía esa consulta da 0 filas. En ese caso, o
-cuando no se pide explícitamente «mes a mes», usa ESTA funcionalidad: agrupa por banda con la
+la evolución MENSUAL ([dash_evolucion_cartera]/[func_evolucion_cartera_filtrada]) ya cae a
+`proyectos.ponderacion` cuando no hay snapshots (no devuelve 0 filas). Cuando NO se pide eje
+temporal («mes a mes»), usa igualmente ESTA funcionalidad, más simple: agrupa por banda con la
 ponderación ACTUAL (`proyectos.ponderacion`, SIN historial) y devuelve por banda nº de ofertas,
 monto BRUTO (Σ monto_usd) y ESPERADO (Σ monto_usd*ponderacion/100). No necesita snapshots.
 Filtrable por cliente con [regla_busqueda_nombre]. Render: bar/pie, etiqueta=banda, valor=esperado.
