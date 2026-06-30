@@ -14,6 +14,7 @@ class TipoSalida(str, Enum):
     texto = "texto"
     tabla = "tabla"
     grafico = "grafico"  # Reservado para fase 2 (Chart.js en el frontend)
+    informe = "informe"  # Informe ejecutivo: `texto` trae MARKDOWN listo para renderizar
 
 
 # ========== Request ==========
@@ -34,7 +35,10 @@ class ConsultaRequest(BaseModel):
     )
     formato: Optional[TipoSalida] = Field(
         None,
-        description="Fuerza el tipo de salida. Si se omite, la IA lo decide (texto/tabla).",
+        description=(
+            "Fuerza el tipo de salida (texto | tabla | grafico | informe). Si se omite, la "
+            "IA lo decide. Usa 'informe' para forzar un informe ejecutivo en markdown."
+        ),
     )
     usuario: Optional[str] = Field(
         None,
@@ -94,9 +98,21 @@ class ConsultaMeta(BaseModel):
 class ConsultaResponse(BaseModel):
     """Respuesta estructurada de una consulta a datos."""
     origen: str
-    tipo: TipoSalida = Field(..., description="texto | tabla | grafico")
+    tipo: TipoSalida = Field(
+        ...,
+        description=(
+            "texto | tabla | grafico | informe. Cuando es 'informe', `texto` contiene un "
+            "informe ejecutivo en MARKDOWN listo para renderizar en el front."
+        ),
+    )
     titulo: Optional[str] = Field(None, description="Título legible de la respuesta.")
-    texto: Optional[str] = Field(None, description="Respuesta/resumen en lenguaje natural.")
+    texto: Optional[str] = Field(
+        None,
+        description=(
+            "Respuesta/resumen en lenguaje natural. Si tipo='informe', es MARKDOWN "
+            "(informe ejecutivo) que el front debe renderizar como tal."
+        ),
+    )
     tabla: Optional[TablaPayload] = Field(None, description="Datos tabulares (si tipo=tabla).")
     grafico: Optional[GraficoPayload] = Field(None, description="Spec de gráfico (fase 2).")
     meta: ConsultaMeta

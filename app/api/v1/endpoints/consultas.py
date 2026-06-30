@@ -78,7 +78,7 @@ async def consultar(request: ConsultaRequest):
 async def consultar_voz(
     file: UploadFile = File(..., description="Archivo de audio (webm/wav/mp3/ogg/m4a)"),
     origen: str = Form(..., description="Clave del origen a consultar (p.ej. cartera_db, rh_api)"),
-    formato: str | None = Form(None, description="Fuerza la salida: texto | tabla | grafico"),
+    formato: str | None = Form(None, description="Fuerza la salida: texto | tabla | grafico | informe"),
     responder_voz: bool = Form(True, description="Si true, incluye un resumen hablado (audio_base64)"),
     usuario: str | None = Form(None, description="Nombre de quien consulta, para personalizar la respuesta"),
     objetivo: str | None = Form(None, description="Tabla/recurso específico a consultar (omite el matcher)"),

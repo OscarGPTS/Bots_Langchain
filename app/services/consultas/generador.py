@@ -114,12 +114,14 @@ def generar_sql(
         "- Respeta el CONTEXTO del negocio y, si hay EJEMPLOS, replica su estilo y fórmulas "
         "adaptándolos a la pregunta.\n"
         "- tipo='tabla' si la pregunta pide un listado; 'texto' si pide un dato único o "
-        "explicación; 'grafico' si pide graficar/visualizar/comparar magnitudes.\n"
+        "explicación breve; 'grafico' si pide graficar/visualizar/comparar magnitudes; "
+        "'informe' si pide un informe/reporte/análisis ejecutivo, un resumen extenso o una "
+        "respuesta larga y narrada (igual devuelve el SELECT con los datos que lo sustentan).\n"
         "- Si tipo='grafico', AGREGA en el propio SQL (GROUP BY, COUNT/SUM) y añade un "
         'objeto "grafico": {"tipo_grafico":"bar|line|pie","columna_etiqueta":"<col categoría>",'
         '"columnas_valores":["<col numérica>"],"agregacion":"ninguna"} usando los alias '
         "exactos del SELECT.\n"
-        'Responde SOLO con JSON: {"sql":"...","titulo":"...","tipo":"tabla|texto|grafico","grafico":{...}|null}'
+        'Responde SOLO con JSON: {"sql":"...","titulo":"...","tipo":"tabla|texto|grafico|informe","grafico":{...}|null}'
     )
 
     # Construir el mensaje del usuario por secciones (solo las que existan).
@@ -185,6 +187,50 @@ def generar_intent_rest(consulta: str, candidatos: List[Dict]) -> Dict:
     data.setdefault("titulo", consulta[:120])
     data.setdefault("grafico", None)
     return data
+
+
+def generar_informe(
+    consulta: str,
+    columnas: List[str],
+    filas: List[List],
+    total: int,
+    usuario: Optional[str] = None,
+) -> str:
+    """Generar un INFORME EJECUTIVO en Markdown a partir de los resultados.
+
+    Devuelve una cadena Markdown lista para renderizar en el frontend (el campo
+    `texto` de la respuesta la transporta cuando tipo='informe'). No inventa datos:
+    se limita a la muestra de filas proporcionada. Si el LLM falla, degrada a un
+    resumen simple en texto plano.
+    """
+    muestra = [dict(zip(columnas, fila)) for fila in filas[:50]]
+    destinatario = (usuario or "").strip()
+    system = (
+        "Eres un analista de negocio. Redacta un INFORME EJECUTIVO en español, en MARKDOWN "
+        "válido, a partir EXCLUSIVAMENTE de los datos proporcionados (no inventes cifras ni "
+        "datos que no estén). Estructura: un título con '## '; un **Resumen ejecutivo** de 2 a 4 "
+        "frases; **Hallazgos clave** en viñetas con las cifras relevantes en negritas; una tabla "
+        "Markdown con los datos más importantes si aplica; y cierre con **Recomendaciones** o "
+        "próximos pasos cuando tenga sentido. Sé conciso, claro y orientado a la decisión. "
+        "Devuelve SOLO el markdown, sin explicaciones fuera de él."
+    )
+    if destinatario:
+        system += f" Dirige el informe a {destinatario} de forma natural."
+    user = (
+        f"Pregunta del usuario: {consulta}\n"
+        f"Total de filas: {total}\n"
+        f"Datos (muestra hasta 50 filas): {json.dumps(muestra, ensure_ascii=False, default=str)}"
+    )
+    try:
+        llm = obtener_llm()
+        resp = llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
+        md = (resp.content or "").strip()
+        if md:
+            return md
+    except Exception as e:  # noqa: BLE001
+        logger.warning("No se pudo generar el informe ejecutivo: %s", e)
+    # Degradación: resumen simple en texto plano.
+    return resumir_resultados(consulta, columnas, filas, total)
 
 
 def resumir_resultados(consulta: str, columnas: List[str], filas: List[List], total: int) -> str:

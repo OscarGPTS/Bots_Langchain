@@ -133,7 +133,7 @@ def _resolver_tipo(tipo_sugerido: str, formato_forzado: Optional[str], num_filas
         return TipoSalida(formato_forzado)
     if num_filas == 0:
         return TipoSalida.texto
-    if tipo_sugerido in ("texto", "grafico"):
+    if tipo_sugerido in ("texto", "grafico", "informe"):
         return TipoSalida(tipo_sugerido)
     return TipoSalida.tabla
 
@@ -182,6 +182,12 @@ def construir_respuesta(
             texto = f"{saludo}: {total} registro(s)."
         else:
             texto = f"{saludo}: un gráfico con {len(grafico.etiquetas)} categoría(s)."
+    elif tipo == TipoSalida.informe:
+        # Informe ejecutivo: `texto` lleva MARKDOWN; se conservan los datos crudos
+        # (tabla ya quedó seteada arriba si hay filas) y, si hubo spec, también el gráfico.
+        texto = generador.generar_informe(consulta, columnas, filas, total, usuario)
+        if grafico_spec:
+            grafico = _construir_grafico(columnas, filas, grafico_spec)
     elif tipo == TipoSalida.tabla:
         texto = f"{saludo}: {total} registro(s)." + (
             " El listado se recortó al máximo de filas." if truncado else ""
